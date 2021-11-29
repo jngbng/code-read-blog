@@ -1,0 +1,1594 @@
+---
+title: 만들면서 배우는 Reagent Part 1
+date: 2021-11-18
+image: 'https://practical.li/clojurescript/images/clojurescript-react.png'
+---
+
+import { CodeWave } from "gatsby-theme-waves"
+
+---
+
+ClojureScript의 React wrapper인 Reagent의 핵심 원리만 뽑아 간략하게 재구현하면서 그 구조를 설명하는 글이다.  [A DIY guide to build your own React](https://github.com/pomber/didact)을 보고 영감을 받아서 제작하였다.
+
+TODO 이 글은 아직 수정 중인 단계로 내용이 업데이트 될 예정이다.
+
+## Build your own Reagent
+
+* Step 0. React를 직접 사용하기
+* Step 1. JSX 대용으로 Hiccup 적용
+* Step 2. Sequence 지원
+* Step 3. 사용자 컴포넌트 지원
+* Step 4. Ratom을 이용한 상태 변경 지원
+* Step 5. Local ratom을 위한 form-2 지원
+
+<CodeWave>
+
+```clojure
+(ns core
+  (:require ["react" :as react]
+            ["react-dom" :as react-dom]))
+
+(defn app []
+  (react/createElement "div"
+                       #js {:style #js {:color "red"}}
+                       "Hello, I am 'app'"))
+
+(defn ^:export init []
+  (react-dom/render (app)
+                    (js/document.getElementById "app")))
+
+(defn ^:dev/after-load reload []
+  (let [dom (js/document.getElementById "app")]
+    (react-dom/unmountComponentAtNode dom)
+    (react-dom/render (app)
+                      dom)))
+```
+
+### Step 0. React를 직접 사용하기
+
+React의 가장 기본적 사용법은 React 컴포넌트를 `react-dom/render` 함수로 DOM에 마운트 해주는 것이다.
+
+JSX 문법의 도움을 받으면 React 컴포넌트 생성 부분을 간결하게 표현할 수 있지만, 해당 기능은 사용할 수 없기 때문에 일단 `react/createElement` 를 직접 호출하여 React 컴포넌트를 생성하는 방식으로 react를 사용할 수 있다.
+
+이로서 가장 기본 인티그레이션은 끝났다. 참 쉽죠?
+
+```clojure 5:8
+(ns core
+  (:require ["react" :as react]
+            ["react-dom" :as react-dom]))
+
+(defn app []
+  (react/createElement "div"
+                       #js {:style #js {:color "red"}}
+                       "Hello, I am 'app'"))
+
+(defn ^:export init []
+  (react-dom/render (app)
+                    (js/document.getElementById "app")))
+
+(defn ^:dev/after-load reload []
+  (let [dom (js/document.getElementById "app")]
+    (react-dom/unmountComponentAtNode dom)
+    (react-dom/render (app)
+                      dom)))
+```
+
+### Step 1. JSX 대용으로 Hiccup 적용
+
+하지만 JSX 같은 것이 없으면 생산성이 너무 낮아 쓸만한 것이 못 된다.
+
+Clojure 생태계에서는 JSX와 비슷한 역할을 하는 프로젝트로 Hiccup이 있는데, 이 아이디어를 가져와 이 간극을 매우기로 한다.
+
+```clojure 5:8
+(ns core
+  (:require ["react" :as react]
+            ["react-dom" :as react-dom]))
+
+(defn app []
+  [:div
+   {:style {:color "red"}}
+   "Hello, I am 'app'"])
+
+(defn ^:export init []
+  (react-dom/render (app)
+                    (js/document.getElementById "app")))
+
+(defn ^:dev/after-load reload []
+  (let [dom (js/document.getElementById "app")]
+    (react-dom/unmountComponentAtNode dom)
+    (react-dom/render (app)
+                      dom)))
+```
+
+컴포넌트 생성하는 부분에서 `react/createElement`를 직접 호출하는 대신에 hiccup 스타일의 백터로 내용을 표현하도록 하자. 구분을 위해 이렇게 생성된 컴포넌트는 `Reagent 컴포넌트`라고 부르도록 하자. 이로서 JSX급의 생산성을 다시 되찾았다!
+
+```clojure 10:18
+(ns core
+  (:require ["react" :as react]
+            ["react-dom" :as react-dom]))
+
+(defn app []
+  [:div
+   {:style {:color "red"}}
+   "Hello, I am 'app'"])
+
+(defn ^:export init []
+  (react-dom/render (app)
+                    (js/document.getElementById "app")))
+
+(defn ^:dev/after-load reload []
+  (let [dom (js/document.getElementById "app")]
+    (react-dom/unmountComponentAtNode dom)
+    (react-dom/render (app)
+                      dom)))
+```
+
+이제 남은 일은 `react-dom/render`에 넘기기 위해서 주어진 reagent 컴포넌트를 react 컴포넌트로 변환하는 일이다. reagent에서는 이 작업을 `compile`이라 부른다. 이 작업은 render 함수 속에 숨겨서 마법처럼 돌아가게 만들자.
+
+```clojure 10:26
+(ns core
+  (:require ["react" :as react]
+            ["react-dom" :as react-dom]))
+
+(defn app []
+  [:div
+   {:style {:color "red"}}
+   "Hello, I am 'app'"])
+
+(defn- as-element
+  "Compile reagent component to react component"
+  [comp]
+  "TODO: implement here")
+
+(defn- render [comp container]
+  (let [react-comp (as-element (if (fn? comp)
+                                 (comp)
+                                 comp))]
+    (react-dom/render react-comp
+                      container)))
+
+(defn ^:export init []
+  (render #'app
+          (js/document.getElementById "app")))
+
+(defn ^:dev/after-load reload []
+  (let [dom (js/document.getElementById "app")]
+    (react-dom/unmountComponentAtNode dom)
+    (render #'app
+            dom)))
+```
+
+이를 위해 render 함수를 분리하여 한번 감싸자. 이 함수는 인자로 reagent 컴포넌트 혹은 reagent 컴포넌트를 반환하는 함수를 받는다. 이를 내부에서 react 컴포넌트로 변환한 후 원래대로 `react-dom/render`를 불러주자.
+
+모든 변환 작업은 as-element에서 마법같이 이뤄진다고 하자.
+
+```clojure
+(defn- as-element
+  "Compile reagent component to react component"
+  [comp]
+  "TODO: implement here")
+```
+
+이제 공은 as-element에게로 넘어왔다.
+
+```clojure
+(defn- hiccup-element [tag argv]
+  "TODO: implement here")
+
+(defn- vec-to-elem [v]
+  (let [tag (first v)]
+    (if (keyword? tag)
+      (hiccup-element tag
+                      v)
+      (throw (js/Error "What?")))))
+      
+(defn- as-element
+  "Compile reagent component to react component"
+  [comp]
+  (cond
+    (vector? comp) (vec-to-elem comp)
+    :else comp))
+```
+
+reagent component로 들어올 수 인자는 숫자, 문자열, 벡터가 있다. 벡터일 경우만 처리하도록 하고 나머지는 그대로 react에게 넘기자.
+
+hiccup 문법에서 백터의 첫번째 요소는 키워드여야 한다. (물론 문자열이나 심볼도 되지만, 간단한 구현을 위해 무시하자.) 키워드일 경우만 hiccup-element로 처리하고, 그 외의 경우는 일단 에러 처리해두자.
+
+```clojure
+(declare as-element)
+
+(defn- hiccup-element [tag argv]
+  (let [component (name tag)
+        props (second argv)
+        has-props? (map? props)
+        jsprops (or (when has-props?
+                      (clj->js props))
+                    #js {})
+        first-child-idx (if has-props? 2 1)]
+    (apply react/createElement
+           component
+           jsprops
+           (->> argv
+                (drop first-child-idx)
+                (map as-element)))))
+```
+
+이제 마지막이다. hiccup-form에서 react 컴포넌트를 생성하는 작업은 단순 변환 작업이다.
+
+1. 컴포넌트 이름은 react가 알아볼 수 있도록 문자열로 변경해준다.
+1. hiccup-form에서는 두번째 요소로 속성 맵이 있을 수 있다. 이를 react가 알아볼 수 있도록 JS object로 변환해준다. reagent는 이 단계에서 키 이름 관련하여 편의 기능을 제공한다. (kebab-case를 camelCase로 바꾸거나, `class`키를 `className`로 바꿔준다.) 간결성을 위해 과감히 모두 스킵하자.
+1. 나머지 자식들 중에도 hiccup-form이 있을 수 있다. `as-element` 함수를 호출해서 모두 react 컴포넌트로 변환한다. `as-element`과 `hiccup-element`는 mutual recursion 관계이기 때문에 함수 순서를 조정할 수는 없고, `declare`를 이용해 미리 선언해야 한다.
+1. 끝으로 준비된 인자들로 `react/createElement`를 호출해주면 된다.
+
+```clojure
+(declare as-element)
+
+(defn- make-element [argv component jsprops first-child-idx]
+  (apply react/createElement
+         component
+         jsprops
+         (->> argv
+              (drop first-child-idx)
+              (map as-element))))
+
+(defn- hiccup-element [tag argv]
+  (let [component (name tag)
+        props (second argv)
+        has-props? (map? props)
+        jsprops (or (when has-props?
+                      (clj->js props))
+                    #js {})
+        first-child-idx (if has-props? 2 1)]
+    (make-element argv
+                  component
+                  jsprops
+                  first-child-idx)))
+```
+
+실제 reagent 코드에서는 `react/createElement`를 호출하는 부분이 `make-element`로 분리되어 있다.
+
+```clojure
+(ns core
+  (:require ["react" :as react]
+            ["react-dom" :as react-dom]))
+
+(defn app []
+  [:div
+   {:style {:color "red"}}
+   "Hello, I am 'app'"])
+
+(declare as-element)
+
+(defn- make-element [argv component jsprops first-child-idx]
+  (apply react/createElement
+         component
+         jsprops
+         (->> argv
+              (drop first-child-idx)
+              (map as-element))))
+
+(defn- hiccup-element [tag argv]
+  (let [component (name tag)
+        props (second argv)
+        has-props? (map? props)
+        jsprops (or (when has-props?
+                      (clj->js props))
+                    #js {})
+        first-child-idx (if has-props? 2 1)]
+    (make-element argv
+                  component
+                  jsprops
+                  first-child-idx)))
+
+(defn- vec-to-elem [v]
+  (let [tag (first v)]
+    (if (keyword? tag)
+      (hiccup-element tag
+                      v)
+      (throw (js/Error "What?")))))
+
+(defn- as-element
+  "Compile reagent component to react component"
+  [comp]
+  (cond
+    (vector? comp) (vec-to-elem comp)
+    :else comp))
+
+(defn- render [comp container]
+  (let [react-comp (as-element (if (fn? comp)
+                                 (comp)
+                                 comp))]
+    (react-dom/render react-comp
+                      container)))
+
+(defn ^:export init []
+  (render #'app
+          (js/document.getElementById "app")))
+
+(defn ^:dev/after-load reload []
+  (let [dom (js/document.getElementById "app")]
+    (react-dom/unmountComponentAtNode dom)
+    (render #'app
+            dom)))
+```
+
+이제 div, span, p 같은 기본 React 컴포넌트를 그릴 수 있게 되었다.
+
+```clojure
+(defn- child-comp [{:keys [msg]}]
+  [:div
+   "Hi, I am 'child2-comp"
+   [:div
+    "I've got '" msg "'"]])
+
+(defn app []
+  [:div
+   {:style {:color "red"}}
+   "Hello, I am 'app'"
+   [child-comp
+    {:msg "message from app"}]])
+```
+
+### Step 2. Sequence 지원
+
+TODO `(for [i (range 10)] i)` 를 랜더링 할 수 있도록 하자.
+
+### Step 3. 사용자 컴포넌트 지원
+
+이제 다음으로 사용자 정의 컴포넌트를 지원하여, JSX와 마찬가지로 Hiccup 백터의 첫번째 자리에 사용자 정의 컴포넌트를 넣을 수 있도록하자.
+
+사용자 정의 컴포넌트를 정의하는 방법은 React의 함수형 컴포넌트와 마찬가지로, Reagent element(= Hiccup 백터)를 반환하는 함수를 정의하는 것으로 하자. 이렇게 하면 Reagent 컴포넌트는 CLJS 함수일 뿐이고, CLJS 함수는 그 자체로 JS 함수이기 때문에, 별다른 작업없이 그대로 `React.createElement` 로 넘겨도 React가 함수형 컴포넌트로 인식한다!
+
+하지만 사용자가 작성하는 함수는 React element가 아닌 Reagent element를 반환하기 때문에, 그대로 넣으면 React에서 렌더링 에러가 나게된다. 따라서 Reagent element를 다시 React element로 변환해줄 Wrapper를 만들어서 사용자가 작성한 함수를 감싸주도록 하자.
+
+이 Wrapper 구현은 단순 함수(=함수형 컴포넌트)여도 되고 클래스 컴포넌트여도 되는데, Reagent는 기본값으로 클래스 컴포넌트를 사용하고 있다. 여기서는 클래스 컴포넌트 방식을 따라가보자.
+
+```clojure
+(defn- vec-to-elem [v]
+  (let [tag (first v)]
+    (if (keyword? tag)
+      (hiccup-element tag
+                      v)
+      (throw (js/Error "What?")))))
+```
+
+먼저 Hiccup 백터의 첫번째 자리에 함수를 넣을 수 있도록 백터를 처리하는 부분을 확장한다.
+
+```clojure
+(defn create-class
+  "렌더 함수를 받아서 React 클래스 컴포넌트를 반환한다."
+  [render-fn]
+  "TODO")
+
+(defn- fn-to-element
+  "클래스 컴포넌트로 변환"
+  [tag v]
+  (let [class-comp (create-class tag)
+        jsprops #js {:argv v}]
+    (react/createElement class-comp
+                         jsprops)))
+
+(defn- vec-to-elem [v]
+  (let [tag (first v)]
+    (if (keyword? tag)
+      (hiccup-element tag
+                      v)
+      (fn-to-element tag
+                     v))))
+```
+
+첫번째 자리에 키워드가 아니면 에러였지만, 이 부분을 수정하여 함수일 경우 클래스 컴포넌트로 변환하는 작업(Wrapper를 씌우는 작업)을 추가하자.
+
+먼저 사용자 정의 함수를 React 클래스 컴포넌트로 변경해주는 `create-class`가 있다고 가정하고, 이를 이용해 주어진 함수를 React 클래스 컴포넌트로 변환한다.
+
+```clojure 9:12
+(defn create-class
+  "렌더 함수를 받아서 React 클래스 컴포넌트를 반환한다."
+  [render-fn]
+  "TODO")
+
+(defn- fn-to-element
+  "클래스 컴포넌트로 변환"
+  [tag v]
+  (let [class-comp (create-class tag)
+        jsprops #js {:argv v}]
+    (react/createElement class-comp
+                         jsprops)))
+
+(defn- vec-to-elem [v]
+  (let [tag (first v)]
+    (if (keyword? tag)
+      (hiccup-element tag
+                      v)
+      (fn-to-element tag
+                     v))))
+```
+
+다음으로는 생성된 클래스 컴포넌트를 이용해 React Element를 생성하면 되는데, 이 때 props와 children을 어떻게 넘길지 결정해야 한다.
+
+`hiccup-element`에서 처럼 주어진 prop을 변환해서 넣는 방법도 있겠지만, 이 인자는 어짜피 CLJS 함수에서 사용할 것이므로 JS Object로 변환하는 것은 불필요하다. 또한 children도 사용자 정의 함수에게 마음대로 수정할 수 있는 자유도를 주기 위해 별다른 처리는 하지 않기로 한다.
+
+결론적으로 사용자 정의 함수에 인자들을 그대로 전달하기 위해, 여기서는 `argv`라는 이름으로 hiccup 백터 원본을 그대로 넘기자. 그러면 우리가 생성할 Wrapper 클래스 컴포넌트에서는 `this.props.argv`를 통해 원본 hiccup 벡터에 접근할 수 있다.
+
+```javascript
+function createClass(renderFn) {
+  class Cmp extends React.Component {
+    render() {
+      // TODO: FILL ME
+    }
+    shouldComponentUpdate(nextProps, nextState) {
+      // TODO: FILL ME
+    }
+  }
+
+  Cmp.displayName = renderFn.name;
+
+  return Cmp;
+}
+```
+
+마지막 단계로 주어진 렌더 함수를 React 클래스 컴포넌트로 변경해줄 `create-class` 구현만 남았다. 해야할 일은 React에서 High-Order-Component를 만드는 것과 동일하다. `React.Component`를 상속하는 클래스를 동적으로 생성하되, 몇가지 메소드를 재정의해서 반환하면 된다.
+
+1. `render`: `props.argv`로 넘겨 받은 hiccup 백터와 `renderFn`를 이용해 React Element를 생성해서 반환하면 된다.
+1. `shouldComponentUpdate`: 성능을 위해 튜닝해준다. React는 기본적으로 컴포넌트의 `props`나 `state`가 바뀌면 해당 컴포넌트를 새로 그린다. 그런데 우리가 넘기는 `props.argv`는 CLJS 백터로, 의미상 값이 바뀌지 않아도 JS 세상에서 볼 때는 바뀐 것으로 볼 수 있다. CLJS의 equality 체크 함수를 이용해 변경 여부 판단 로직을 튜닝해준다. [문서](https://reactjs.org/docs/react-component.html#shouldcomponentupdate)
+1. `displayName`: React 개발자 도구에서 컴포넌트를 구분할 수 있도록 이름을 지어준다.
+
+이를 ES6 스타일의 Javascript로 표현하면 왼쪽 코드와 같다.
+
+```clojure
+(defn create-class [render-fn]
+  (let [cmp (fn [props context updater]
+              (this-as this
+                (.call react/Component
+                       this props context updater)
+                this))]
+    (goog.object/extend (.-prototype cmp)
+      ;; inherit
+      (.-prototype react/Component)
+      ;; override & define
+      #js {:render
+           (fn render []
+             "TODO: FILL ME")
+
+           :shouldComponentUpdate
+           (fn shouldComponentUpdate [nextprops _nextstate]
+             "TODO: FILL ME")})
+    (set! (.. cmp -prototype -constructor) cmp)
+    (set! (.-displayName cmp) "TODO: NAME")
+    cmp))
+```
+
+아쉽게 cljs.core API에 JS 클래스 상속을 위한 기능은 아직 없다.
+[create-react-class](https://reactjs.org/docs/react-without-es6.html)를 이용하는 방법도 있겠지만, 의존성을 줄이기 위해서 ES5 스타일로 직접 구현하도록 하자. ES5에서 클래스 상속을 구현하는 방법은 이 글의 범위를 넘어서므로 생략한다. ([Stackoverflow 답변](https://stackoverflow.com/questions/56942847/javascript-extend-an-es6-class-in-es5)이나 [블로그 글](https://blog.sessionstack.com/how-javascript-works-the-internals-of-classes-and-inheritance-transpiling-in-babel-and-113612cdc220)을 참고하자.)
+
+```clojure
+(defn create-class [render-fn]
+  (let [cmp (fn [props context updater]
+              (this-as this
+                (.call react/Component
+                       this props context updater)
+                this))]
+    (goog.object/extend (.-prototype cmp)
+      ;; inherit
+      (.-prototype react/Component)
+      ;; override & define
+      #js {:render
+           (fn render []
+             (this-as this
+               (let [res (let [v (-> this .-props .-argv)]
+                           (apply render-fn
+                                  (rest v)))]
+                 (as-element res))))
+
+           :shouldComponentUpdate
+           (fn shouldComponentUpdate [nextprops _nextstate]
+             "TODO: FILL ME")})
+    (set! (.. cmp -prototype -constructor) cmp)
+    (set! (.-displayName cmp) "TODO: NAME")
+    cmp))
+```
+
+#### render 메소드 함수
+
+`this.props.argv`로 넘겨받은 원본 hiccup 백터에서 첫번째 요소는 `render-fn` 자기 자신이므로 버리고, 두번째 요소부터 함수 호출 인자로 생각해서 `render-fn` 함수를 불러준다. 반환되는 값은 Reagent 컴포넌트일테니, `as-element`를 호출해서 React 엘리먼트로 변환하여 반환하자.
+
+```clojure
+(defn create-class [render-fn]
+  (let [cmp (fn [props context updater]
+              (this-as this
+                (.call react/Component
+                       this props context updater)
+                this))]
+    (goog.object/extend (.-prototype cmp)
+      ;; inherit
+      (.-prototype react/Component)
+      ;; override & define
+      #js {:render
+           (fn render []
+             (this-as this
+               (let [res (let [v (-> this .-props .-argv)]
+                           (apply render-fn
+                                  (rest v)))]
+                 (as-element res))))
+
+           :shouldComponentUpdate
+           (fn shouldComponentUpdate [nextprops _nextstate]
+             (this-as c
+               (let [old-argv (.. c -props -argv)
+                     new-argv (.-argv nextprops)
+                     noargv (or (nil? old-argv)
+                                (nil? new-argv))]
+                 (or noargv
+                     (not= old-argv
+                           new-argv)))))})
+    (set! (.. cmp -prototype -constructor) cmp)
+    (set! (.-displayName cmp) "TODO: NAME")
+    cmp))
+```
+
+#### shouldComponentUpdate 메소드 함수
+
+state는 사용하지 않으므로 무시하고, props가 바뀌었는지를 체크한다.
+
+TODO: 이전이나 이후 argv가 nil일 경우 무조건 업데이트한다. 왜 그런가? argv는 원본 hiccup 백터인데 nil인 경우가 있나?
+
+```clojure
+(defn create-class [render-fn]
+  (let [cmp (fn [props context updater]
+              (this-as this
+                (.call react/Component
+                       this props context updater)
+                this))]
+    (goog.object/extend (.-prototype cmp)
+      ;; inherit
+      (.-prototype react/Component)
+      ;; override & define
+      #js {:render
+           (fn render []
+             (this-as this
+               (let [res (let [v (-> this .-props .-argv)]
+                           (apply render-fn
+                                  (rest v)))]
+                 (as-element res))))
+
+           :shouldComponentUpdate
+           (fn shouldComponentUpdate [nextprops _nextstate]
+             (this-as c
+               (let [old-argv (.. c -props -argv)
+                     new-argv (.-argv nextprops)
+                     noargv (or (nil? old-argv)
+                                (nil? new-argv))]
+                 (or noargv
+                     (not= old-argv
+                           new-argv)))))})
+    (set! (.. cmp -prototype -constructor) cmp)
+    (when-let [display-name (.-name render-fn)]
+      (set! (.-displayName cmp) display-name))
+    cmp))
+```
+
+#### displayName 멤버 변수
+
+마지막으로 `render-fn`의 함수 이름을 그대로 사용하자. `render-fn`이 익명 함수일 경우 이름이 없을 수 있기 때문에 `when-let`으로 체크를 해준다. 함수 이름은 CLJS 컴파일러에 의해 변경되어 있는데, 여기서는 그대로 쓰자. (namespace 구분을 위한 '.'은 '$'로, '-'는 '_'로, '?'는 _QMARK 등으로 변경되어 있다.)
+
+```clojure
+(ns core
+  (:require ["react" :as react]
+            ["react-dom" :as react-dom]
+            [goog.object]))
+
+(defn- child-comp [{:keys [msg]}]
+  [:div
+   "Hi, I am 'child2-comp"
+   [:div
+    "I've got '" msg "'"]])
+
+(defn app []
+  [:div
+   {:style {:color "red"}}
+   "Hello, I am 'app'"
+   [child-comp
+    {:msg "message from app"}]])
+
+(declare as-element)
+
+(defn- make-element [argv component jsprops first-child-idx]
+  (apply react/createElement
+         component
+         jsprops
+         (->> argv
+              (drop first-child-idx)
+              (map as-element))))
+
+(defn- hiccup-element [tag argv]
+  (let [component (name tag)
+        props (second argv)
+        has-props? (map? props)
+        jsprops (or (when has-props?
+                      (clj->js props))
+                    #js {})
+        first-child-idx (if has-props? 2 1)]
+    (make-element argv
+                  component
+                  jsprops
+                  first-child-idx)))
+
+(defn create-class [render-fn]
+  (let [cmp (fn [props context updater]
+              (this-as this
+                (.call react/Component
+                       this props context updater)
+                this))]
+    (goog.object/extend (.-prototype cmp)
+      ;; inherit
+      (.-prototype react/Component)
+      ;; override & define
+      #js {:render
+           (fn render []
+             (this-as this
+               (let [res (let [v (-> this .-props .-argv)]
+                           (apply render-fn
+                                  (rest v)))]
+                 (cond
+                   (vector? res) (as-element res)
+                   :else res))))
+
+           :shouldComponentUpdate
+           (fn shouldComponentUpdate [nextprops _nextstate]
+             (this-as c
+               (let [old-argv (.. c -props -argv)
+                     new-argv (.-argv nextprops)
+                     noargv (or (nil? old-argv)
+                                (nil? new-argv))]
+                 (or noargv
+                     (not= old-argv
+                           new-argv)))))})
+
+    (set! (.. cmp -prototype -constructor) cmp)
+
+    (when-let [display-name (.-name render-fn)]
+      (set! (.-displayName cmp) display-name))
+
+    cmp))
+
+(defn- fn-to-element
+  "클래스 컴포넌트"
+  [tag v]
+  (let [class-comp (create-class tag)
+        jsprops #js {:argv v}]
+    (react/createElement class-comp
+                         jsprops)))
+
+(defn- vec-to-elem [v]
+  (let [tag (first v)]
+    (if (keyword? tag)
+      (hiccup-element tag
+                      v)
+      (fn-to-element tag
+                     v))))
+
+(defn- as-element
+  "Compile reagent component to react component"
+  [comp]
+  (cond
+    (vector? comp) (vec-to-elem comp)
+    :else comp))
+
+(defn- render [comp container]
+  (let [react-comp (as-element (if (fn? comp)
+                                 (comp)
+                                 comp))]
+    (react-dom/render react-comp
+                      container)))
+
+(defn ^:export init []
+  (render #'app
+          (js/document.getElementById "app")))
+
+(defn ^:dev/after-load reload []
+  (let [dom (js/document.getElementById "app")]
+    (react-dom/unmountComponentAtNode dom)
+    (render #'app
+            dom)))
+
+```
+
+이제 사용자 컴포넌트도 문제 없이 잘 그려준다!
+
+```clojure
+(def ^:private counter_ (atom 0))
+
+(defn- on-click []
+  (reset! counter_
+          (inc @counter_)))
+
+(defn- click-counter []
+  [:button
+   {:onClick on-click}
+   "Clicked "
+   @counter_
+   " time(s)"])
+```
+
+### Step 4. Ratom을 이용한 상태 변경 지원
+
+사용자 컴포넌트도 지원할 수 있게 되었지만, 좀 더 쓸모있는 프로그램을 만들기 위해서는 컴포넌트가 상태(state)를 다룰 수 있어야 한다. 첫번째 대안으로는 React의 setState를 사용하는 방법이 있다. React의 기능을 그대로 활용하여 호환성을 유지한다는 면에서 훌륭한 접근법이다. 하지만 좀 더 클로저스러운 방법은 없을까? 클로저에서는 상태 관리(side-effect)를 위해 atom을 사용한다. 여기서도 atom을 동일하게 사용할 수 없을까?
+
+`click-counter`를 예를 들어보자. 현재까지 클릭한 횟수를 보여주는 버튼이다. 클릭 횟수는 실행 중에 값이 바뀌는 값으로, 여느 클로저 프로그램과 같이 `counter_` 라는 atom으로 관리한다. 뷰를 그리기 위해 현재 값을 읽을 때는 `counter_`를 `deref`(@)하고, 이벤트 핸들러에서 값을 바꿀 때는 `counter_`를 `reset!`한다. 구현에 사용되는 React는 모두 감춰지고, 일반적인 클로저 프로그램 그 자체가 될 수 있다!
+
+#### 잠깐, 그런데 새로고침은?
+
+`counter_` 상태 값이 바뀌면 `click-counter` 컴포넌트가 새로 그려져야 하는데, 어떻게 그럴 수 있을까? 이 질문은 다음 두 개의 질문으로 나뉜다.
+
+Q. atom의 상태 값이 바뀔 때 신호를 받을 수 있나?
+> A. 클로저의 atom에는 이미 watch 기능이 있어서, 상태 값이 바뀔 때마다 불릴 콜백 함수를 등록할 수 있다!
+
+Q. 컴포넌트는 어떻게 새로 그릴 수 있나?
+> A. 우리는 위에서 사용자 컴포넌트를 React 클래스 컴포넌트로 변환하였다. React 클래스 컴포넌트 API 중에는 해당 컴포넌트를 강제로 새로 그릴 수 있는 `forceUpdate` 메소드가 있다.
+
+```clojure
+(defn- add-watcher
+  "`this`는 react 컴포넌트, `deps-ratoms`는 render 함수에서 사용하는 atom 들이다."
+  [this deps-ratoms]
+  (doseq [deps-ratom_ deps-ratoms]
+    (add-watch deps-ratom_
+               this
+               (fn [_key _atom _old _new]
+                 (.forceUpdate this)))))
+```
+
+이 둘을 조합하면 해결의 실마리가 보인다. 사용자 컴포넌트가 내부적으로 사용하는 atom들이 `deps-ratoms`으로 주어졌다고 하자. 그러면 이 atom들 각각에 watch 콜백 함수를 등록하는데, 이 콜백 함수에서 사용자 컴포넌트의 forceUpdate 메소드를 불러주는 것이다. (정확히는 사용자 컴포넌트를 감싸고 있는 Wrapper React 클래스 컴포넌트의 `forceUpdate` 메소드를 불러준다.)
+
+#### 그런데 `deps-ratoms` 어떻게 알아내나?
+
+마지막으로 가장 중요한 질문으로 사용자 컴포넌트가 내부적으로 사용하는 atom들은 어떻게 알아 낼 수 있을까? 첫번째 방법은 React의 useEffect hook 처럼 사용자 컴포넌트를 작성하는 개발자가 직접 기술하는 방법이 있을 것이다. 이는 사용성이나 안전성 측면에서 좋지 않다. 사람의 실수를 배재할 수 있는 안정적이고 확실한 방법이 필요하다.
+
+결론부터 이야기하면 `deref` 함수를 후킹하면 `deps-ratoms`들을 알아낼 수 있다. 사용자 컴포넌트가 최종적으로 그려지는 과정을 다시 떠올려보자. 사용자 컴포넌트는 백터를 반환하는 함수이다. 랜더링 과정은 사용자 함수를 실행하여 Hiccup 백터를 반환받은 후, 이를 React Element로 변환하는 것이다. 어떤 atom이 이 반환되는 Hiccup 백터에 영향을 미치려면 이 함수를 실행하는 도중 어딘가에서는 참조(deref) 될 수 밖에 없다. atom을 deref하지 않고 상태 값을 읽어오는 방법은 CLJS에 없기 때문이다. 물론 참조된 값이 실제로는 전혀 사용되지 않을 수도 있다. 이 경우에도 해당 atom 값이 바뀔 때 사용자 컴포넌트를 새로 그린다고 하더라도, 여전히 영향을 주지 않을 것이기 때문에 문제는 없다.
+
+
+> 함수 실행 중에 참조(deref)되지 않은 atom은 정말 아무런 영향을 못주는걸까?
+>
+> CLJS의 불변성 덕분에 이게 보장된다. 먼저 함수 실행 후에 참조되는 atom 경우를 살펴보자. 이 값이 영향을 미치려면 반환된 Hiccup 백터를 바꿀 수 있어야 하는데, 한번 만들어진 백터의 값은 바뀌지 않기 때문에 영향을 미칠 수 없다. 그러면 역으로 함수 실행 전에 참조되는 atom은 어떨까? 이 값이 최종적으로 반환될 Hiccup 백터에 영향을 미치려면 사용자 정의 함수의 동작을 바꾸거나, 사용자 정의 함수가 참조하는 변수(binding)의 값을 바꿀 수 있어야 하는데, 이 또한 불가능하다. CLJS에선 함수 또한 불변이며, 모든 변수 또한 불변이기 때문이다. 물론 외부 JS 변수를 참조하거나, CLJS가 최종적으로 JS로 컴파일 되는 특성을 이용해 CLJS 값을 JS 오브젝트로 취급하여 값을 바꾸는 Hacky한 경우는 재외한다.
+
+```clojure
+(deftype RAtom [atom_]
+  IAtom
+
+  IDeref
+  (-deref [this]
+    (deref atom_))
+
+  IReset
+  (-reset! [_this new-value]
+    (reset! atom_ new-value))
+
+  IWatchable
+  (-notify-watches [_this old new]
+    (-notify-watches atom_ old new))
+  (-add-watch [_this key f]
+    (add-watch atom_ key f))
+  (-remove-watch [_this key]
+    (remove-watch atom_ key)))
+```
+
+`deref` 함수를 후킹하기 위해 atom과 동일한 인터페이스를 재공하는 `RAtom`이라는 데이터를 정의하자. 먼저 `reset!`과 `deref` 함수에 사용될 수 있도록 `IReset`과 `IDeref` 프로토콜을 구현해준다. 또한 watch 기능을 사용할 수 있도록 IWatchable 프로토콜도 구현해준다. 내부 구현은 atom 타입인 `atom_`을 가지도록 하고, atom의 기본 동작을 그대로 쓰도록 한다.
+
+```clojure
+(def ^:dynamic *captured* (atom []))
+
+(defn- notify-deref-watcher!
+  "Add `derefed` to `*captured*`."
+  [derefed]
+  (swap! *captured*
+         conj
+         derefed))
+
+(deftype RAtom [atom_]
+  IAtom
+
+  IDeref
+  (-deref [this]
+    (notify-deref-watcher! this)
+    (deref atom_))
+
+  IReset
+  (-reset! [_this new-value]
+    (reset! atom_ new-value))
+
+  IWatchable
+  (-notify-watches [_this old new]
+    (-notify-watches atom_ old new))
+  (-add-watch [_this key f]
+    (add-watch atom_ key f))
+  (-remove-watch [_this key]
+    (remove-watch atom_ key)))
+```
+
+대신 deref 될 때 전역 변수인 `*captured*`에 자신을 등록하여 자진신고 하는 기능을 추가한다. 전역 변수는 좀 더 안전하게 쓸 수 있도록 dynamic binding 기능을 이용하여 사용하는 함수에서 재정의할 수 있도록 하자.
+
+```clojure
+(def ^:dynamic *captured* (atom []))
+
+(defn- notify-deref-watcher!
+  "Add `derefed` to `*captured*`."
+  [derefed]
+  (swap! *captured*
+         conj
+         derefed))
+
+(deftype RAtom [atom_]
+  IAtom
+
+  IDeref
+  (-deref [this]
+    (notify-deref-watcher! this)
+    (deref atom_))
+
+  IReset
+  (-reset! [_this new-value]
+    (reset! atom_ new-value))
+
+  IWatchable
+  (-notify-watches [_this old new]
+    (-notify-watches atom_ old new))
+  (-add-watch [_this key f]
+    (add-watch atom_ key f))
+  (-remove-watch [_this key]
+    (remove-watch atom_ key)))
+
+(defn- ratom
+  "Like clojure.core/atom, except that it keeps track of derefs."
+  [x]
+  (->RAtom (atom x)))
+```
+
+마지막으로 편리한 사용을 위해 `ratom`이라는 factory 함수를 정의한다.
+이제 사용자 정의 함수에서 `atom` 대신에 `ratom`을 쓰면, 아래 예제와 같이 랜더링 함수에서 사용자 정의 함수가 내부적으로 쓰는 `ratom`들을 계산해낼 수 있다.
+
+<div>
+
+```clojure
+(def ^:private counter_ (ratom 0))
+
+(defn- click-counter []
+  [:button
+   "Clicked "
+   @counter_
+   " time(s)"])
+
+(let [captured_ (atom [])]
+  (binding [*captured* captured_]
+    (click-counter)
+    (assert (= @captured_ [counter_]))))
+```
+
+</div>
+
+
+```clojure 11:20
+(defn create-class [render-fn]
+  (let [cmp (fn [props context updater]
+              (this-as this
+                (.call react/Component
+                       this props context updater)
+                this))]
+    (goog.object/extend (.-prototype cmp)
+      ;; inherit
+      (.-prototype react/Component)
+      ;; override & define
+      #js {:render
+           (fn render []
+             (this-as this
+               (let [res (let [v (-> this .-props .-argv)]
+                           (apply render-fn
+                                  (rest v)))]
+                 (cond
+                   (vector? res) (as-element res)
+                   :else res))))
+
+           :shouldComponentUpdate
+           (fn shouldComponentUpdate [nextprops _nextstate]
+             (this-as c
+               (let [old-argv (.. c -props -argv)
+                     new-argv (.-argv nextprops)
+                     noargv (or (nil? old-argv)
+                                (nil? new-argv))]
+                 (or noargv
+                     (not= old-argv
+                           new-argv)))))})
+
+    (set! (.. cmp -prototype -constructor) cmp)
+
+    (when-let [display-name (.-name render-fn)]
+      (set! (.-displayName cmp) display-name))
+
+    cmp))
+```
+
+이제 모든 조각은 갖춰졌으니, 이를 이용해서 `create-class`의 `render` 함수를 수정해보자.
+
+```clojure
+(defn- do-render [this render-fn]
+  (let [res (let [v (-> this .-props .-argv)]
+              (apply render-fn
+                     (rest v)))]
+    (cond
+      (vector? res) (as-element res)
+      :else res)))
+
+(defn create-class [render-fn]
+  (let [cmp (fn [props context updater]
+              (this-as this
+                (.call react/Component
+                       this props context updater)
+                this))]
+    (goog.object/extend (.-prototype cmp)
+      ;; inherit
+      (.-prototype react/Component)
+      ;; override & define
+      #js {:render
+           (fn render []
+             (this-as this
+               (do-render this
+                          render-fn)))
+
+           :shouldComponentUpdate
+           (fn shouldComponentUpdate [nextprops _nextstate]
+             (this-as c
+               (let [old-argv (.. c -props -argv)
+                     new-argv (.-argv nextprops)
+                     noargv (or (nil? old-argv)
+                                (nil? new-argv))]
+                 (or noargv
+                     (not= old-argv
+                           new-argv)))))})
+
+    (set! (.. cmp -prototype -constructor) cmp)
+
+    (when-let [display-name (.-name render-fn)]
+      (set! (.-displayName cmp) display-name))
+
+    cmp))
+```
+
+일단 원본 render 내용은 `do-render`로 뺀다.
+
+```clojure
+(defn create-class [render-fn]
+  (let [cmp (fn [props context updater]
+              (this-as this
+                (.call react/Component
+                       this props context updater)
+                this))]
+    (goog.object/extend (.-prototype cmp)
+      ;; inherit
+      (.-prototype react/Component)
+      ;; override & define
+      #js {:render
+           (fn render []
+             (this-as this
+               (let [ratoms_ (atom [])]
+                 (binding [*captured* ratoms_]
+                   (let [res (do-render this
+                                        render-fn)
+                         ratoms @ratoms_]
+                     res)))))
+
+           :shouldComponentUpdate
+           (fn shouldComponentUpdate [nextprops _nextstate]
+             (this-as c
+               (let [old-argv (.. c -props -argv)
+                     new-argv (.-argv nextprops)
+                     noargv (or (nil? old-argv)
+                                (nil? new-argv))]
+                 (or noargv
+                     (not= old-argv
+                           new-argv)))))})
+
+    (set! (.. cmp -prototype -constructor) cmp)
+
+    (when-let [display-name (.-name render-fn)]
+      (set! (.-displayName cmp) display-name))
+
+    cmp))
+```
+
+ratom의 capture 기능을 사용하여 render-fn이 내부적으로 사용하는 ratom들을 계산한다.
+
+
+```clojure
+(defn create-class [render-fn]
+  (let [cmp (fn [props context updater]
+              (this-as this
+                (.call react/Component
+                       this props context updater)
+                this))]
+    (goog.object/extend (.-prototype cmp)
+      ;; inherit
+      (.-prototype react/Component)
+      ;; override & define
+      #js {:render
+           (fn render []
+             (this-as this
+               (clear-watcher this)
+               (let [ratoms_ (atom [])]
+                 (binding [*captured* ratoms_]
+                   (let [res (do-render this
+                                        render-fn)
+                         ratoms @ratoms_]
+                     (add-watcher this
+                                  ratoms)
+                     res)))))
+
+           :componentWillUnmount
+           (fn componentWillUnmount []
+             (this-as this
+               (clear-watcher this)))
+
+           :shouldComponentUpdate
+           (fn shouldComponentUpdate [nextprops _nextstate]
+             (this-as c
+               (let [old-argv (.. c -props -argv)
+                     new-argv (.-argv nextprops)
+                     noargv (or (nil? old-argv)
+                                (nil? new-argv))]
+                 (or noargv
+                     (not= old-argv
+                           new-argv)))))})
+
+    (set! (.. cmp -prototype -constructor) cmp)
+
+    (when-let [display-name (.-name render-fn)]
+      (set! (.-displayName cmp) display-name))
+
+    cmp))
+```
+
+이제 이 ratom들이 변경될 때 마다 이 컴포넌트를 다시 그리도록 콜백을 등록한다. 그런데 이 컴포넌트를 새로 그려질 때에는, 이전에 사용되었던 ratom이 더 이상 사용되지 않을 수도 있다. 그래서 매번 새로그려질 때마다 이전에 등록해 두었던 콜백은 모두 해지하도록 한다. 마지막으로 이 컴포넌트가 삭제될 때에도 콜백 함수들을 재거해야한다.
+
+
+```clojure
+(defn- add-watcher [this ratoms]
+  (when (seq ratoms)
+    (doseq [deps-ratom_ ratoms]
+      (add-watch deps-ratom_
+                 this
+                 (fn [_key _atom _old _new]
+                   (.forceUpdate this))))
+    (goog.object/set this
+                     "_ratoms"
+                     ratoms)))
+
+(defn- clear-watcher [this]
+  (when-some [^clj prev-ratoms (goog.object/get this
+                                                "_ratoms")]
+    (doseq [deps-ratom_ prev-ratoms]
+      (remove-watch deps-ratom_
+                    this))))
+```
+
+콜백 함수를 등록하는 함수와 제거하는 함수는 특별한 점은 없다. 다만 콜백 함수를 제거하기 위해서는 이전에 등록해 두었던 ratom 목록을 알아야만 한다. 이를 위해 `add-watcher`에서 리엑트 클래스 컴포넌트 인스턴스에 `_ratoms` 속성으로 몰래 설정해 두었다.
+
+```clojure
+
+(ns core
+  (:require ["react" :as react]
+            ["react-dom" :as react-dom]
+            [goog.object]))
+
+(def ^:dynamic *captured* (atom []))
+
+(defn- notify-deref-watcher!
+  "Add `derefed` to `*captured*`."
+  [derefed]
+  (swap! *captured*
+         conj
+         derefed))
+
+(deftype RAtom [atom_]
+  IAtom
+
+  IDeref
+  (-deref [this]
+    (notify-deref-watcher! this)
+    (deref atom_))
+
+  IReset
+  (-reset! [_this new-value]
+    (reset! atom_ new-value))
+
+  IWatchable
+  (-notify-watches [_this old new]
+    (-notify-watches atom_ old new))
+  (-add-watch [_this key f]
+    (add-watch atom_ key f))
+  (-remove-watch [_this key]
+    (remove-watch atom_ key)))
+
+(defn- ratom
+  "Like clojure.core/atom, except that it keeps track of derefs."
+  [x]
+  (->RAtom (atom x)))
+
+(defn- child-comp [{:keys [msg]}]
+  [:div
+   "Hi, I am 'child2-comp"
+   [:div
+    "I've got '" msg "'"]])
+
+(def ^:private counter_ (ratom 0))
+
+(defn- on-click []
+  (reset! counter_
+          (inc @counter_)))
+
+(defn- click-counter []
+  [:button
+   {:onClick on-click}
+   "Clicked "
+   @counter_
+   " time(s)"])
+
+(defn app []
+  [:div
+   {:style {:color "red"}}
+   "Hello, I am 'app'"
+   [child-comp
+    {:msg "message from app"}]
+   [click-counter]])
+
+(declare as-element)
+
+(defn- make-element [argv component jsprops first-child-idx]
+  (apply react/createElement
+         component
+         jsprops
+         (->> argv
+              (drop first-child-idx)
+              (map as-element))))
+
+(defn- hiccup-element [tag argv]
+  (let [component (name tag)
+        props (second argv)
+        has-props? (map? props)
+        jsprops (or (when has-props?
+                      (clj->js props))
+                    #js {})
+        first-child-idx (if has-props? 2 1)]
+    (make-element argv
+                  component
+                  jsprops
+                  first-child-idx)))
+
+(defn- do-render [this render-fn]
+  (let [res (let [v (-> this .-props .-argv)]
+              (apply render-fn
+                     (rest v)))]
+    (cond
+      (vector? res) (as-element res)
+      :else res)))
+
+(defn- add-watcher [this ratoms]
+  (when (seq ratoms)
+    (doseq [deps-ratom_ ratoms]
+      (add-watch deps-ratom_
+                 this
+                 (fn [_key _atom _old _new]
+                   (.forceUpdate this))))
+    (goog.object/set this
+                     "_ratoms"
+                     ratoms)))
+
+(defn- clear-watcher [this]
+  (when-some [^clj prev-ratoms (goog.object/get this
+                                                "_ratoms")]
+    (doseq [deps-ratom_ prev-ratoms]
+      (remove-watch deps-ratom_
+                    this))))
+
+(defn create-class [render-fn]
+  (let [cmp (fn [props context updater]
+              (this-as this
+                (.call react/Component
+                       this props context updater)
+                this))]
+    (goog.object/extend (.-prototype cmp)
+      ;; inherit
+      (.-prototype react/Component)
+      ;; override & define
+      #js {:render
+           (fn render []
+             (this-as this
+               (clear-watcher this)
+               (let [ratoms_ (atom [])]
+                 (binding [*captured* ratoms_]
+                   (let [res (do-render this
+                                        render-fn)
+                         ratoms @ratoms_]
+                     (add-watcher this
+                                  ratoms)
+                     res)))))
+
+           :componentWillUnmount
+           (fn componentWillUnmount []
+             (this-as this
+               (clear-watcher this)))
+
+           :shouldComponentUpdate
+           (fn shouldComponentUpdate [nextprops _nextstate]
+             (this-as c
+               (let [old-argv (.. c -props -argv)
+                     new-argv (.-argv nextprops)
+                     noargv (or (nil? old-argv)
+                                (nil? new-argv))]
+                 (or noargv
+                     (not= old-argv
+                           new-argv)))))})
+
+    (set! (.. cmp -prototype -constructor) cmp)
+
+    (when-let [display-name (.-name render-fn)]
+      (set! (.-displayName cmp) display-name))
+
+    cmp))
+
+(defn- fn-to-element
+  "클래스 컴포넌트"
+  [tag v]
+  (let [class-comp (create-class tag)
+        jsprops #js {:argv v}]
+    (react/createElement class-comp
+                         jsprops)))
+
+(defn- vec-to-elem [v]
+  (let [tag (first v)]
+    (if (keyword? tag)
+      (hiccup-element tag
+                      v)
+      (fn-to-element tag
+                     v))))
+
+(defn- as-element
+  "Compile reagent component to react component"
+  [comp]
+  (cond
+    (vector? comp) (vec-to-elem comp)
+    :else comp))
+
+(defn- render [comp container]
+  (let [react-comp (as-element (if (fn? comp)
+                                 (comp)
+                                 comp))]
+    (react-dom/render react-comp
+                      container)))
+
+(defn ^:export init []
+  (render #'app
+          (js/document.getElementById "app")))
+
+(defn ^:dev/after-load reload []
+  (let [dom (js/document.getElementById "app")]
+    (react-dom/unmountComponentAtNode dom)
+    (render #'app
+            dom)))
+```
+
+이제 버튼을 눌러보면 숫자가 1씩 증가하는 것을 볼 수 있을 것이다!
+
+TODO: 매번 그릴 때 마다 create-class를 해버리면 내부 상태 및 this가 유지가 되질 않는다. 어떻게 해결해야 할까?
+
+TODO: 함수에서 사용되는 ratom은 함수 호출이 반환될 때 모두 deref 되어야 한다. 그런데 ratom deref가 for 등의 lazy-seq 안에 위치하여, 실제 deref 실행이 지연되면 우리 로직에서는 해당 ratom을 감지할 수 없게 된다. 이를 방지하기 위해서 reagent는 개발 모드일 때 sequence 를 랜더링할 떄 lazy-seq 안에 ratom이 있는지 감지하는 코드가 있다.
+
+```clojure
+(defn- click-counter []
+  (let [counter_ (ratom 0)
+        on-click (fn []
+                   (reset! counter_
+                           (inc @counter_)))]
+    (fn []
+      [:button
+       {:onClick on-click}
+       "Clicked "
+       @counter_
+       " time(s)"])))
+```
+
+### Step 5. Local ratom을 위한 form-2 지원
+
+모듈 전역 변수로 ratom을 두고 사용하면 사용자 정의 컴포넌트를 singleton으로 밖에 사용할 수 없는 문제가 있고, 컴포넌트 재사용성 측면에서도 별로 좋지않다.
+
+이런 문제를 완화하기 위해 reagent는 Form-2라는 형태의 컴포넌트를 지원한다. Form-2는 내부 상태를 가지는 함수여야 하는데, 클로저에서 이는 atom과 고차 함수로 구현된다. 다만 여기서는 atom 대신에 ratom을 쓴다는 점이 다를 뿐이다.
+
+```clojure
+(defn- do-render [this render-fn]
+  (let [res (let [v (-> this .-props .-argv)]
+              (apply render-fn
+                     (rest v)))]
+    (cond
+      (vector? res) (as-element res)
+      :else res)))
+
+(defn create-class [render-fn]
+      "..."
+      #js {:render
+           (fn render []
+             (this-as this
+               (clear-watcher this)
+               (let [ratoms_ (atom [])]
+                 (binding [*captured* ratoms_]
+                   (let [res (do-render this
+                                        render-fn)
+                         ratoms @ratoms_]
+                     (add-watcher this
+                                  ratoms)
+                     res)))))
+           "..." "..."
+           })
+```
+
+구현을 수정하여 함수를 반환하는 함수를 지원해보자. 이제 `do-render`에서 반환값 `res`가 함수일 수 있다. 그런데 바로 이 함수가 실질적으로 Hiccup 백터를 반환할 함수 (`render-fn`)인 것이다. 그럼 이 함수를 이용해 do-render를 다시 재귀호출 하면 랜더링이 될 것이다. 그리고 이 컴포넌트가 새로 그려질 때에도 `do-render`함수는 원본 `render-fn`이 아닌 이 반환된 함수로 불려야 한다. 내부 상태 ratom은 이 반환된 함수 클로저(closure) 안에 숨어있기 때문이다. 원본 `render-fn`로 부르면 매번 새로운 클로저(closure)를 생성하기 때문에 실질적으로 상태 업데이트가 안 될 것이다.
+
+
+```clojure
+(defn- do-render [this]
+  (let [render-fn (.-reagentRender this)
+        res (let [v (-> this .-props .-argv)]
+              (apply render-fn
+                     (rest v)))]
+    (cond
+      (vector? res) (as-element res)
+      (ifn? res) (do
+                   (set! (.-reagentRender this) res)
+                   (recur this))
+      :else res)))
+
+(defn create-class [render-fn]
+      "..."
+      #js {:render
+           (fn render []
+             (this-as this
+               (clear-watcher this)
+               (let [ratoms_ (atom [])]
+                 (binding [*captured* ratoms_]
+                   (let [res (do-render this)
+                         ratoms @ratoms_]
+                     (add-watcher this
+                                  ratoms)
+                     res)))))
+
+           :reagentRender
+           render-fn
+           "..." "..."           
+           })
+```
+
+`render-fn`을 갈아칠 수 있도록 하기 위해 `render-fn`을 React 클래스 컴포넌트의 맴버 변수(`reagentRender`)에 저장해두고 `do-render`에서는 이를 참조하도록 수정한다. 또한 반환값이 함수일 경우 이 멤버 변수를 업데이트하고 `do-render`를 재귀호출한다.
+
+```clojure
+(ns core
+  (:require ["react" :as react]
+            ["react-dom" :as react-dom]
+            [goog.object]))
+
+(def ^:dynamic *captured* (atom []))
+
+(defn- notify-deref-watcher!
+  "Add `derefed` to `*captured*`."
+  [derefed]
+  (swap! *captured*
+         conj
+         derefed))
+
+(deftype RAtom [atom_]
+  IAtom
+
+  IDeref
+  (-deref [this]
+    (notify-deref-watcher! this)
+    (deref atom_))
+
+  IReset
+  (-reset! [_this new-value]
+    (reset! atom_ new-value))
+
+  IWatchable
+  (-notify-watches [_this old new]
+    (-notify-watches atom_ old new))
+  (-add-watch [_this key f]
+    (add-watch atom_ key f))
+  (-remove-watch [_this key]
+    (remove-watch atom_ key)))
+
+(defn- ratom
+  "Like clojure.core/atom, except that it keeps track of derefs."
+  [x]
+  (->RAtom (atom x)))
+
+(defn- child-comp [{:keys [msg]}]
+  [:div
+   "Hi, I am 'child2-comp"
+   [:div
+    "I've got '" msg "'"]])
+
+(defn- nested-click-counter []
+  (let [counter_ (ratom 0)
+        on-click (fn []
+                   (reset! counter_
+                           (inc @counter_)))]
+    (fn []
+      [:button
+       {:onClick on-click}
+       "Clicked "
+       @counter_
+       " time(s)"])))
+
+(defn- click-counter []
+  (let [counter_ (ratom 0)
+        on-click (fn []
+                   (reset! counter_
+                           (inc @counter_)))]
+    (fn []
+      [:div
+       [:button
+        {:onClick on-click}
+        "Clicked "
+        @counter_
+        " time(s)"]
+       [nested-click-counter]])))
+
+(defn app []
+  [:div
+   {:style {:color "red"}}
+   "Hello, I am 'app'"
+   [child-comp
+    {:msg "message from app"}]
+   [click-counter]])
+
+(declare as-element)
+
+(defn- make-element [argv component jsprops first-child-idx]
+  (apply react/createElement
+         component
+         jsprops
+         (->> argv
+              (drop first-child-idx)
+              (map as-element))))
+
+(defn- hiccup-element [tag argv]
+  (let [component (name tag)
+        props (second argv)
+        has-props? (map? props)
+        jsprops (or (when has-props?
+                      (clj->js props))
+                    #js {})
+        first-child-idx (if has-props? 2 1)]
+    (make-element argv
+                  component
+                  jsprops
+                  first-child-idx)))
+
+(defn- do-render [^js this]
+  (let [^IFn render-fn (.-reagentRender this)
+        res (let [v (-> this .-props .-argv)]
+              (apply render-fn
+                     (rest v)))]
+    (cond
+      (vector? res) (as-element res)
+      (ifn? res) (do
+                   (set! (.-reagentRender this) res)
+                   (recur this))
+      :else res)))
+
+(defn- add-watcher [this ratoms]
+  (when (seq ratoms)
+    (doseq [deps-ratom_ ratoms]
+      (add-watch deps-ratom_
+                 this
+                 (fn [_key _atom _old _new]
+                   (.forceUpdate this))))
+    (goog.object/set this
+                     "_ratoms"
+                     ratoms)))
+
+(defn- clear-watcher [this]
+  (when-some [^clj prev-ratoms (goog.object/get this
+                                                "_ratoms")]
+    (doseq [deps-ratom_ prev-ratoms]
+      (remove-watch deps-ratom_
+                    this))))
+
+(defn create-class [render-fn]
+  (let [cmp (fn [props context updater]
+              (this-as this
+                (.call react/Component
+                       this props context updater)
+                this))]
+    (goog.object/extend (.-prototype cmp)
+      ;; inherit
+      (.-prototype react/Component)
+      ;; override & define
+      #js {:render
+           (fn render []
+             (this-as this
+               (clear-watcher this)
+               (let [ratoms_ (atom [])]
+                 (binding [*captured* ratoms_]
+                   (let [res (do-render this)
+                         ratoms @ratoms_]
+                     (add-watcher this
+                                  ratoms)
+                     res)))))
+
+           :reagentRender
+           render-fn
+
+           :componentWillUnmount
+           (fn componentWillUnmount []
+             (this-as this
+               (clear-watcher this)))
+
+           :shouldComponentUpdate
+           (fn shouldComponentUpdate [nextprops _nextstate]
+             (this-as c
+               (let [old-argv (.. c -props -argv)
+                     new-argv (.-argv nextprops)
+                     noargv (or (nil? old-argv)
+                                (nil? new-argv))]
+                 (or noargv
+                     (not= old-argv
+                           new-argv)))))})
+
+    (set! (.. cmp -prototype -constructor) cmp)
+
+    (when-let [display-name (.-name render-fn)]
+      (set! (.-displayName cmp) display-name))
+
+    cmp))
+
+(defn- fn-to-element
+  "클래스 컴포넌트"
+  [tag v]
+  (let [class-comp (create-class tag)
+        jsprops #js {:argv v}]
+    (react/createElement class-comp
+                         jsprops)))
+
+(defn- vec-to-elem [v]
+  (let [tag (first v)]
+    (if (keyword? tag)
+      (hiccup-element tag
+                      v)
+      (fn-to-element tag
+                     v))))
+
+(defn- as-element
+  "Compile reagent component to react component"
+  [comp]
+  (cond
+    (vector? comp) (vec-to-elem comp)
+    :else comp))
+
+(defn- render [comp container]
+  (let [react-comp (as-element (if (fn? comp)
+                                 (comp)
+                                 comp))]
+    (react-dom/render react-comp
+                      container)))
+
+(defn ^:export init []
+  (render #'app
+          (js/document.getElementById "app")))
+
+(defn ^:dev/after-load reload []
+  (let [dom (js/document.getElementById "app")]
+    (react-dom/unmountComponentAtNode dom)
+    (render #'app
+            dom)))
+```
+
+다시 잘 돌아가는 지 감상한다.
+
+</CodeWave>
+
+
+TODO. 결론. Reagent / Reframe 모두 소스는 의외로 짧았다.
