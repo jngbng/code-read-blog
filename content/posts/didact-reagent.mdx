@@ -16,7 +16,7 @@ TODO 이 글은 아직 수정 중인 단계로 내용이 업데이트 될 예정
 
 * Step 0. React를 직접 사용하기
 * Step 1. JSX 대용으로 Hiccup 적용
-* Step 2. Sequence 지원
+* Step 2. Array child 지원
 * Step 3. 사용자 컴포넌트 지원
 * Step 4. Ratom을 이용한 상태 변경 지원
 * Step 5. Local ratom을 위한 form-2 지원
@@ -314,6 +314,46 @@ hiccup 문법에서 백터의 첫번째 요소는 키워드여야 한다. (물�
 
 이제 div, span, p 같은 기본 React 컴포넌트를 그릴 수 있게 되었다.
 
+```clojure 5:9
+(defn app []
+  [:div
+   {:style {:color "red"}}
+   "Hello, I am 'app'"
+   [:ul
+    (for [i (range 10)]
+      [:li
+       {:key i}
+       (str "Hi from " i)])]])
+```
+
+### Step 2. Array child 지원
+
+다음으로 `for`를 이용해서 동적으로 내용을 만들어내는 컴포넌트를 지원해보자. Reat는 자식 요소에 컴포넌트 array를 지원함으로써 이를 지원한다. 이 기능을 그대로 활용하자.
+
+```clojure 1:4,11
+(defn- expand-seq [v]
+  (-> (map as-element
+           v)
+      (into-array)))
+
+(defn- as-element
+  "Compile reagent component to react component"
+  [comp]
+  (cond
+    (vector? comp) (vec-to-elem comp)
+    (seq? comp) (expand-seq comp)
+    :else comp))
+```
+
+`as-element`에서 sequence를 지원하는 코드를 추가한다. 해야하는 일은 Reagent 컴포넌트 sequence가 주어지면 React 컴포넌트 array로 변환하는 것이다. 
+
+1. CLJS에서 sequence는 list, vector, set, lazyseq 등 여러가지가 있기 때문에 `seq?`를 이용해 체크해준다.
+1. Reagent 컴포넌트를 React 컴포넌트로 바꾸는 일은 as-element가 해주기 때문에 sequence의 각 요소들에 대해 단순 재귀 호출을 해주면 된다.
+1. 마지막에 into-array를 이용해서 JS native array로 변환해준다. 이 부분은 안해주더라도 동작은 한다. CLJS의 lazyseq는 그 자체로 자바스크립트 iterable 객체이기도 한데, React도 내부적으로 Array를 강제하는게 아니라 iterable을 지원하도록 구현되어 있기 때문인 것 같다. (번외로 임의의 JS object가 iterable 인지를 확인하는 방법은 [블로그](https://pks2974.medium.com/javascript%EC%99%80-iterator-cdee90b11c0f)를 참고하자.)
+
+이것으로 동적 컴포넌트는 지원이 완료되었다.
+
+
 ```clojure
 (defn- child-comp [{:keys [msg]}]
   [:div
@@ -328,10 +368,6 @@ hiccup 문법에서 백터의 첫번째 요소는 키워드여야 한다. (물�
    [child-comp
     {:msg "message from app"}]])
 ```
-
-### Step 2. Sequence 지원
-
-TODO `(for [i (range 10)] i)` 를 랜더링 할 수 있도록 하자.
 
 ### Step 3. 사용자 컴포넌트 지원
 
@@ -667,11 +703,17 @@ TODO: 이전이나 이후 argv가 nil일 경우 무조건 업데이트한다. �
       (fn-to-element tag
                      v))))
 
+(defn- expand-seq [v]
+  (-> (map as-element
+           v)
+      (into-array)))
+
 (defn- as-element
   "Compile reagent component to react component"
   [comp]
   (cond
     (vector? comp) (vec-to-elem comp)
+    (seq? comp) (expand-seq comp)
     :else comp))
 
 (defn- render [comp container]
@@ -1248,11 +1290,17 @@ ratom의 capture 기능을 사용하여 render-fn이 내부적으로 사용하�
       (fn-to-element tag
                      v))))
 
+(defn- expand-seq [v]
+  (-> (map as-element
+           v)
+      (into-array)))
+
 (defn- as-element
   "Compile reagent component to react component"
   [comp]
   (cond
     (vector? comp) (vec-to-elem comp)
+    (seq? comp) (expand-seq comp)
     :else comp))
 
 (defn- render [comp container]
@@ -1561,11 +1609,17 @@ TODO: 함수에서 사용되는 ratom은 함수 호출이 반환될 때 모두 d
       (fn-to-element tag
                      v))))
 
+(defn- expand-seq [v]
+  (-> (map as-element
+           v)
+      (into-array)))
+
 (defn- as-element
   "Compile reagent component to react component"
   [comp]
   (cond
     (vector? comp) (vec-to-elem comp)
+    (seq? comp) (expand-seq comp)
     :else comp))
 
 (defn- render [comp container]
