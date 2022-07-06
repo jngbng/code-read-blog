@@ -2,19 +2,24 @@
   "name": "code-read-blog",
   "version": "0.0.1",
   "scripts": {
-    "develop": "gatsby develop",
-    "start": "gatsby develop",
-    "build": "gatsby build",
-    "clean": "gatsby clean"
+    "dev": "next",
+    "build": "next build",
+    "start": "next start"
   },
   "dependencies": {
-    "deepmerge": "^4.0.0",
-    "gatsby": "^2.13.24",
-    "gatsby-plugin-mdx": "2.14.0",
-    "gatsby-theme-blog": "^1.0.2",
-    "gatsby-theme-waves": "*",
-    "react": "^16.8.6",
-    "react-dom": "^16.8.6",
-    "rehype-waves": "0.1.6"
+    "@code-hike/mdx": "0.6.1",
+    "gray-matter": "^4.0.2",
+    "next": "latest",
+    "nextra": "2.0.0-alpha.56",
+    "nextra-theme-blog": "2.0.0-alpha.55",
+    "react": "^17.0.2",
+    "react-dom": "^17.0.2"
+  },
+  "prettier": {
+    "arrowParens": "always",
+    "singleQuote": true,
+    "tabWidth": 2,
+    "trailingComma": "none",
+    "semi": false
   }
 }
