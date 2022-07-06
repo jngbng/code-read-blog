@@ -1,0 +1,17 @@
+---
+type: tag
+title: Tagged Posts
+---
+
+import { useRouter } from 'next/router'
+
+export const TagName = () => {
+  const router = useRouter();
+  if (router == null) {
+    return null;
+  }
+  const { tag } = router.query
+  return tag || null
+}
+
+## Posts Tagged with “<TagName/>”

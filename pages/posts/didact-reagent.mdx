@@ -1,15 +1,14 @@
 ---
 title: 만들면서 배우는 Reagent Part 1
 date: 2021-11-18
-image: 'https://practical.li/clojurescript/images/clojurescript-react.png'
----
-
-import { CodeWave } from "gatsby-theme-waves"
-
+description: ClojureScript의 React wrapper 라이브러리인 Reagent의 핵심 원리만 뽑아 간략하게 재구현하면서 그 구조를 설명한다.
+tag: ["clojure", "web", "clojurescript"]
 ---
 
 ClojureScript의 React wrapper 라이브러리인 [Reagent](https://github.com/reagent-project/reagent)의 핵심 원리만 뽑아 간략하게 재구현하면서 그 구조를 설명하는 글이다. [A DIY guide to build your own React](https://github.com/pomber/didact)를 보고 영감을 받아서 제작하였다.
-본문 내용은 좀 더 가다듬으며 업데이트할 예정이다. 마지막 수정일: `2021-12-05`
+본문 내용은 좀 더 가다듬으며 업데이트할 예정이다. 마지막 수정일: `2022-07-06`
+
+<img src="/clojurescript-react.png" alt="Clojurescript and React" width="50%" style={{textAlign:"center"}}/>
 
 ## 나만의 Reagent 만들기
 
@@ -24,14 +23,16 @@ ClojureScript의 React wrapper 라이브러리인 [Reagent](https://github.com/r
 전체 소스코드는 [여기](https://github.com/jngbng/didact-reagent)에서 볼 수 있다.
 
 목차:
-* Step 0. React를 직접 사용하기
-* Step 1. JSX 대용으로 Hiccup 적용
-* Step 2. Array child 지원
-* Step 3. 사용자 컴포넌트 지원
-* Step 4. Ratom을 이용한 상태 변경 지원
-* Step 5. Local ratom을 위한 form-2 지원
+1. Step 0. React를 직접 사용하기
+1. Step 1. JSX 대용으로 Hiccup 적용
+1. Step 2. Array 자식 요소 지원
+1. Step 3. 사용자 정의 컴포넌트 지원
+1. Step 4. Ratom을 이용한 상태 변경 지원
+1. Step 5. Local ratom을 위한 form-2 지원
 
-<CodeWave>
+<div style={{width: "960px", marginLeft: "calc(50% - 480px)"}}>
+
+<CH.Scrollycoding style={{height: "80vh"}}>
 
 ```clojure
 (ns core
@@ -56,89 +57,52 @@ ClojureScript의 React wrapper 라이브러리인 [Reagent](https://github.com/r
 
 ### Step 0. React를 직접 사용하기
 
-React의 가장 기본적 사용법은 React 컴포넌트를 `react-dom/render` 함수로 HTML DOM element에 마운트 해주는 것이다.
+기본적인 React 사용법은 React 컴포넌트를 화면 상의 특정 DOM element에 마운트(`react-dom/render`) 해주는 것이다. React 컴포넌트는 내가 원하는 최종적인 UI 모양을 표현하는 **Fiber**(가상 DOM)[^1]를 반환하는 사용자 함수이다. (또는 Fiber 자체) React는 주어진 Fiber를 참고하여 사용자 대신에 실제 DOM를 조작하여 사용자의 의도를 표현해주는 역할을 한다.
 
-JSX 문법의 도움을 받으면 React 컴포넌트 생성 부분을 간결하게 표현할 수 있지만, 해당 기능은 사용할 수 없기 때문에 일단 `react/createElement` 를 직접 호출하여 React 컴포넌트를 생성하는 방식으로 react를 사용할 수 있다.
+보통 React를 사용할 때는 JSX 문법 확장을 이용해 Fiber 생성 부분을 선언적으로 간결하게 표현한다.
+우리는 해당 기능은 사용할 수 없기 때문에 Fiber를 직접 생성해야 한다. Fiber는 `react/createElement` 를 호출하여 생성할 수 있다. 사실 이게 JSX 문법 확장이 해주는 일이다.
 
-이로서 가장 기본 인티그레이션은 끝났다. 참 쉽죠?
+이로서 가장 기본 인티그레이션은 끝났다! 🎉
 
-```clojure 5:8
-(ns core
-  (:require ["react" :as react]
-            ["react-dom" :as react-dom]))
+---
 
-(defn app []
-  (react/createElement "div"
-                       #js {:style #js {:color "red"}}
-                       "Hello, I am 'app'"))
+```clojure focus=5:8
 
-(defn ^:export init []
-  (react-dom/render (app)
-                    (js/document.getElementById "app")))
-
-(defn ^:dev/after-load reload []
-  (let [dom (js/document.getElementById "app")]
-    (react-dom/unmountComponentAtNode dom)
-    (react-dom/render (app)
-                      dom)))
 ```
 
 ### Step 1. JSX 대용으로 Hiccup 적용
 
-하지만 JSX 같은 것이 없으면 생산성이 너무 낮아 쓸만한 것이 못 된다.
-CLJS 생태계에서 JSX와 비슷한 역할을 하는 프로젝트로 이미 [Hiccup](https://github.com/weavejester/hiccup)이 있는데, 이 아이디어를 가져와 JSX 같은 역할을 하도록 하자.
+하지만 JSX 같은 문법 확장이 없으면 생산성이 너무 낮아 쓸만한 것이 못 된다.
+Boilerplate 코드가 너무 많아 읽기도 힘들고 쓰는건 고역이다.
+개인적으로 JSX 문법 확장은 React 성공의 일등 공신이 아닐까 한다.
 
-```clojure 5:8
-(ns core
-  (:require ["react" :as react]
-            ["react-dom" :as react-dom]))
+다행히 문법 확장은 Clojure의 특기 분야이다. 매크로와 EDN을 활용하면 얼마든지 언어 문법을 확장해 나갈 수 있다.
 
+CLJS 생태계에서 JSX와 비슷한 역할을 하는 프로젝트로 이미 [Hiccup](https://github.com/weavejester/hiccup)이 있는데, 이 아이디어를 가져와 JSX 역할을 대신하도록 하자.
+
+---
+
+```clojure focus=2:4,7
 (defn app []
   [:div
    {:style {:color "red"}}
    "Hello, I am 'app'"])
 
 (defn ^:export init []
-  (react-dom/render (app)
+  (react-dom/render (app) #_"<- FIX HERE!!"
                     (js/document.getElementById "app")))
-
-(defn ^:dev/after-load reload []
-  (let [dom (js/document.getElementById "app")]
-    (react-dom/unmountComponentAtNode dom)
-    (react-dom/render (app)
-                      dom)))
 ```
 
-컴포넌트 생성하는 부분에서 `react/createElement`를 직접 호출하는 대신에 hiccup 스타일의 백터로 내용을 표현하도록 하자. 구분을 위해 이렇게 생성된 컴포넌트는 `Reagent 컴포넌트`라고 부르도록 하자. 이로서 JSX급의 생산성을 다시 되찾았다!
+Fiber를 생성하는 부분에서 `react/createElement`를 직접 호출하는 대신에 Hiccup 스타일의 백터로 내용을 표현하도록 하자. 구분을 위해 이렇게 생성된 컴포넌트는 `Reagent 컴포넌트`라고 부르도록 하자. 이로서 JSX급의 생산성을 다시 되찾았다!
 
-```clojure 10:18
-(ns core
-  (:require ["react" :as react]
-            ["react-dom" :as react-dom]))
+- **React 컴포넌트**: Fiber를 반환하는 사용자 함수. (또는 Fiber)
+- **Reagent 컴포넌트**: Hiccup 백터를 반환하는 사용자 함수. (또는 Hiccup 백터)
 
-(defn app []
-  [:div
-   {:style {:color "red"}}
-   "Hello, I am 'app'"])
+이제 남은 일은 `react-dom/render`가 Reagent 컴포넌트를 인식할 수 있도록 하는 것이다.
 
-(defn ^:export init []
-  (react-dom/render (app)
-                    (js/document.getElementById "app")))
+---
 
-(defn ^:dev/after-load reload []
-  (let [dom (js/document.getElementById "app")]
-    (react-dom/unmountComponentAtNode dom)
-    (react-dom/render (app)
-                      dom)))
-```
-
-이제 남은 일은 `react-dom/render`에 넘기기 위해서 주어진 reagent 컴포넌트를 react 컴포넌트로 변환하는 일이다. reagent에서는 이 작업을 `compile`이라 부른다. 이 작업은 render 함수 속에 숨겨서 마법처럼 돌아가게 만들자.
-
-```clojure 10:26
-(ns core
-  (:require ["react" :as react]
-            ["react-dom" :as react-dom]))
-
+```clojure focus=6:16,19
 (defn app []
   [:div
    {:style {:color "red"}}
@@ -159,28 +123,18 @@ CLJS 생태계에서 JSX와 비슷한 역할을 하는 프로젝트로 이미 [H
 (defn ^:export init []
   (render #'app
           (js/document.getElementById "app")))
-
-(defn ^:dev/after-load reload []
-  (let [dom (js/document.getElementById "app")]
-    (react-dom/unmountComponentAtNode dom)
-    (render #'app
-            dom)))
 ```
 
-이를 위해 render 함수를 분리하여 한번 감싸자. 이 함수는 인자로 reagent 컴포넌트 혹은 reagent 컴포넌트를 반환하는 함수를 받는다. 이를 내부에서 react 컴포넌트로 변환한 후 원래대로 `react-dom/render`를 불러주자.
+물론 해당 함수를 수정할 수는 없기 때문에 `render`라는 wrapper 함수를 만들어 호환을 위한 코드를 추가한다.
 
-모든 변환 작업은 as-element에서 마법같이 이뤄진다고 하자.
+전략은 간단하다. 인자로 받은 Reagent 컴포넌트를 React 컴포넌트로 변환하여 `react-dom/render`로 넘기자.
+Reagent에서는 이 변환 작업을 `compile`이라 부른다.
 
-```clojure
-(defn- as-element
-  "Compile reagent component to react component"
-  [comp]
-  "TODO: implement here")
-```
+Reagent 컴포넌트는 Hiccup 백터를 반환하는 함수이니, 실행하여 Hiccup 백터를 반환 받은 다음, 이를 다시 Fiber로 변환하면 된다. Hiccup 백터를 Fiber로 변환하는 작업은 `as-element`에서 마법같이 이뤄진다고 하자.
 
-이제 공은 as-element에게로 넘어왔다.
+---
 
-```clojure
+```clojure focus=1:9,14:16
 (defn- hiccup-element [tag argv]
   "TODO: implement here")
 
@@ -190,7 +144,7 @@ CLJS 생태계에서 JSX와 비슷한 역할을 하는 프로젝트로 이미 [H
       (hiccup-element tag
                       v)
       (throw (js/Error "What?")))))
-      
+
 (defn- as-element
   "Compile reagent component to react component"
   [comp]
@@ -199,9 +153,14 @@ CLJS 생태계에서 JSX와 비슷한 역할을 하는 프로젝트로 이미 [H
     :else comp))
 ```
 
-Reagent 컴포넌트로 들어올 수 인자는 숫자, 문자열, 벡터가 있다. 벡터일 경우만 처리하도록 하고 나머지는 그대로 react에게 넘기자.
+이제 공은 `as-element`에게로 넘어왔다.
 
-hiccup 문법에서 백터의 첫번째 요소는 키워드여야 한다. (물론 문자열이나 심볼도 되지만, 간단한 구현을 위해 무시하자.) 키워드일 경우만 hiccup-element로 처리하고, 그 외의 경우는 일단 에러 처리해두자.
+`as-element` 함수에 들어올 수 인자는 숫자, 문자열, 벡터가 있다.
+우리가 관심 있는 부분은 Hiccup 벡터이기 때문에, 백터만 처리하도록 하고 나머지는 그대로 React에게 넘긴다.
+
+백터는 Hiccup 백터가 맞는지를 먼저 검사한다. Hiccup 문법에서 백터의 첫번째 요소는 키워드여야 한다.[^2] 키워드일 경우만 `hiccup-element`로 처리하고, 그 외의 경우는 일단 에러 처리해두자.
+
+---
 
 ```clojure
 (declare as-element)
@@ -222,16 +181,24 @@ hiccup 문법에서 백터의 첫번째 요소는 키워드여야 한다. (물�
                 (map as-element)))))
 ```
 
-이제 마지막이다. hiccup 백터에서 react 컴포넌트를 생성하는 작업은 단순 변환 작업이다.
+이제 마지막이다. Hiccup 백터에서 Fiber를 생성하는 작업은 단순 변환 작업이다.
 
-1. 컴포넌트 이름은 react가 알아볼 수 있도록 문자열로 변경해준다.
-1. hiccup 백터는 두번째 요소에 속성(property) 맵이 있을 수 있다. react가 알아볼 수 있도록 이를 JS object로 변환해준다. reagent는 이 단계에서 키 이름 관련하여 편의 기능을 제공한다. (kebab-case를 camelCase로 바꾸거나, `class`키를 `className`로 바꿔준다.) 간결성을 위해 과감히 모두 스킵하자.
-1. Hiccup 백터는 재귀구조라 나머지 자식들 중에 또 다시 hiccup 백터가 있을 수 있다. `as-element` 함수를 재귀호출해서 자식들을 모두 react 컴포넌트로 변환한다. 그런데 `as-element` 함수 정의는 아래쪽에 있다. `as-element`과 `hiccup-element`는 mutual recursion 관계이기 때문에 함수 순서를 조정할 수는 없고, `declare`를 이용해 `as-element`를 미리 선언해준다.
-1. 끝으로 준비된 인자들로 `react/createElement`를 호출해주면 된다.
+**태그 이름 변환**:
+태그는 React가 알아볼 수 있도록 문자열로 변경해준다. (`:div` -> `"div"`)
 
-```clojure
-(declare as-element)
+**속성 맵 변환**:
+Hiccup 백터는 두번째 요소에 속성(property) 맵이 있을 수 있다. React가 알아볼 수 있도록 이를 JS object로 변환해준다.
 
+Reagent는 이 단계에서 키 이름 관련하여 편의 기능을 제공한다. (kebab-case를 camelCase로 바꾸거나, `class`키를 `className`로 바꿔준다.) 간결성을 위해 과감히 모두 생략하자.
+
+**자식 노드 변환**:
+Hiccup 백터는 재귀구조라 자식들 중에 다시 Hiccup 백터가 있을 수 있다. `as-element` 함수를 재귀호출해서 자식들을 모두 React 컴포넌트로 변환한다.
+
+끝으로 준비된 인자들로 `react/createElement`를 호출해주면 된다.
+
+---
+
+```clojure focus=1:7,17:20
 (defn- make-element [argv component jsprops first-child-idx]
   (apply react/createElement
          component
@@ -254,7 +221,9 @@ hiccup 문법에서 백터의 첫번째 요소는 키워드여야 한다. (물�
                   first-child-idx)))
 ```
 
-실제 reagent 코드에서는 `react/createElement`를 호출하는 부분이 `make-element`로 분리되어 있다.
+실제 Reagent 코드에서는 `react/createElement`를 호출하는 부분이 `make-element`로 분리되어 있다.
+
+---
 
 ```clojure
 (ns core
@@ -321,25 +290,11 @@ hiccup 문법에서 백터의 첫번째 요소는 키워드여야 한다. (물�
             dom)))
 ```
 
-이제 div, span, p 같은 기본 React 컴포넌트를 그릴 수 있게 되었다.
+이제 div, span, p 같은 기본 태그들을 그릴 수 있게 되었다.
 
-```clojure 5:9
-(defn app []
-  [:div
-   {:style {:color "red"}}
-   "Hello, I am 'app'"
-   [:ul
-    (for [i (range 10)]
-      [:li
-       {:key i}
-       (str "Hi from " i)])]])
-```
+---
 
-### Step 2. Array child 지원
-
-다음으로 `for`를 이용해서 동적으로 내용을 만들어내는 컴포넌트를 지원해보자. Reat는 자식 요소에 컴포넌트 array를 지원함으로써 이를 지원한다. 이 기능을 그대로 활용하자.
-
-```clojure 1:4,11
+```clojure focus=1:4,11
 (defn- expand-seq [v]
   (-> (map as-element
            v)
@@ -354,16 +309,67 @@ hiccup 문법에서 백터의 첫번째 요소는 키워드여야 한다. (물�
     :else comp))
 ```
 
-`as-element`에서 sequence를 지원하는 코드를 추가한다. 해야하는 일은 Reagent 컴포넌트 sequence가 주어지면 React 컴포넌트 array로 변환하는 것이다. 
+### Step 2. Array 자식 요소 지원
+
+다음으로 아래와 같이 컬렉션을 인자로 받아서 내용을 동적으로 만들어내는 컴포넌트를 지원해보자.
+React는 자식에 React 컴포넌트 Array를 넣을 수 있는데, 이 기능을 그대로 활용하자.
+
+```javascript
+const renderChild = (list) => (
+  <ul>
+    {list.map((elem, idx) => (<li key={idx}>{elem}</li>))}
+  </ul>
+)
+```
+
+이를 위해 `as-element`에 sequence를 처리하는 코드를 추가한다. sequence를 Reagent 컴포넌트 sequence로 가정하고, 이를 React 컴포넌트 array로 변환한다.
 
 1. CLJS에서 sequence는 list, vector, set, lazyseq 등 여러가지가 있기 때문에 `seq?`를 이용해 체크해준다.
-1. Reagent 컴포넌트를 React 컴포넌트로 바꾸는 일은 as-element가 해주기 때문에 sequence의 각 요소들에 대해 단순 재귀 호출을 해주면 된다.
-1. 마지막에 into-array를 이용해서 JS native array로 변환해준다. 이 부분은 안해주더라도 동작은 한다. CLJS의 lazyseq는 그 자체로 자바스크립트 iterable 객체이기도 한데, React도 내부적으로 Array를 강제하는게 아니라 iterable을 지원하도록 구현되어 있기 때문인 것 같다. (번외로 임의의 JS object가 iterable 인지를 확인하는 방법은 [블로그](https://pks2974.medium.com/javascript%EC%99%80-iterator-cdee90b11c0f)를 참고하자.)
+1. Reagent 컴포넌트를 React 컴포넌트로 바꾸는 일은 `as-element`가 해주기 때문에 sequence의 각 요소들에 대해 단순 재귀 호출을 해주면 된다.
+1. 마지막에 `into-array`를 이용해서 JS array로 변환해준다.[^3]
 
-이것으로 동적 컴포넌트는 지원이 완료되었다.
-
+이것으로 Array child 지원이 완료되었다. `for` 함수를 사용하여 아래와 같이 사용할 수 있다.
 
 ```clojure
+(defn app []
+  [:ul
+   (for [i (range 10)]
+     [:li
+      {:key i}
+      (str "Hi from " i)])])
+```
+
+---
+
+```clojure focus=1:12,19:20
+(defn create-class
+  "렌더 함수를 받아서 React 클래스 컴포넌트를 반환한다."
+  [render-fn]
+  "TODO")
+
+(defn- fn-to-element
+  "클래스 컴포넌트로 변환"
+  [tag v]
+  (let [class-comp (create-class tag)
+        jsprops #js {:argv v}]
+    (react/createElement class-comp
+                         jsprops)))
+
+(defn- vec-to-elem [v]
+  (let [tag (first v)]
+    (if (keyword? tag)
+      (hiccup-element tag
+                      v)
+      (fn-to-element tag
+                     v))))
+```
+
+### Step 3. 사용자 정의 컴포넌트 지원
+
+다음으로 React의 꽃, 사용자 정의 컴포넌트 지원 기능을 넣자. 사용자 정의 컴포넌트를 정의하는 방법은 React의 함수형 컴포넌트와 마찬가지로, Hiccup 백터를 반환하는 함수를 정의하는 것으로 한다.
+사용하는 방법은 JSX와 마찬가지로 Hiccup 백터의 첫번째 자리에 함수를 넣을 수 있도록 한다. 최종적으로 아래와 같은 코드를 사용할 수 있게된다.
+
+```clojure focus=1:5,11:12
 (defn- child-comp [{:keys [msg]}]
   [:div
    "Hi, I am 'child2-comp"
@@ -378,82 +384,29 @@ hiccup 문법에서 백터의 첫번째 요소는 키워드여야 한다. (물�
     {:msg "message from app"}]])
 ```
 
-### Step 3. 사용자 컴포넌트 지원
+#### 반환값 변환
 
-이제 다음으로 사용자 정의 컴포넌트를 지원하여, JSX와 마찬가지로 Hiccup 백터의 첫번째 자리에 사용자 정의 컴포넌트를 넣을 수 있도록하자.
+여기서 가장 중요한 작업은 사용자 정의 함수가 React와 잘 동작할 수 있도록 호환 코드를 추가하는 작업이다. CLJS 함수는 그 자체로 JS 함수이기 때문에, React가 사용자가 만든 함수를 호출하는 대에는 문제가 없다. 하지만 이 함수는 Fiber(React element)가 아닌 Hiccup 백터(Reagent element)를 반환하기 때문에 React와 호환되지 않는다.
 
-사용자 정의 컴포넌트를 정의하는 방법은 React의 함수형 컴포넌트와 마찬가지로, Reagent element(= Hiccup 백터)를 반환하는 함수를 정의하는 것으로 하자. 이렇게 하면 Reagent 컴포넌트는 CLJS 함수일 뿐이고, CLJS 함수는 그 자체로 JS 함수이기 때문에, 별다른 작업없이 그대로 `React.createElement` 로 넘겨도 React가 함수형 컴포넌트로 인식한다!
+해결 방법으로 이전 스탭에서 했던 것과 마찬가지로, 반환값을 React element로 변환해줄 Wrapper를 만들어서 사용자가 작성한 함수를 감싸줘야 한다. 이 Wrapper 구현은 단순 함수(=함수형 컴포넌트)여도 되고 React 클래스 컴포넌트여도 되는데, Reagent는 기본값으로 React 클래스 컴포넌트를 사용하고 있다.[^4] 여기서는 React 클래스 컴포넌트 방식을 따라가보자.
 
-하지만 사용자가 작성하는 함수는 React element가 아닌 Reagent element를 반환하기 때문에, 그대로 넣으면 React에서 렌더링 에러가 나게된다. 따라서 Reagent element를 다시 React element로 변환해줄 Wrapper를 만들어서 사용자가 작성한 함수를 감싸주도록 하자.
+먼저 `vec-to-elem` 함수를 확장하여 Hiccup 백터의 첫번째 자리에 함수가 올 수 있도록 수정한다. 그리고 첫번째 자리에 함수가 올 경우 이 함수를 React 클래스 컴포넌트로 변환한다. 이 변환 작업은 `create-class`라는 함수가 처리해준다고 가정한다.
 
-이 Wrapper 구현은 단순 함수(=함수형 컴포넌트)여도 되고 클래스 컴포넌트여도 되는데, Reagent는 기본값으로 클래스 컴포넌트를 사용하고 있다. 여기서는 클래스 컴포넌트 방식을 따라가보자.
+---
 
-```clojure
-(defn- vec-to-elem [v]
-  (let [tag (first v)]
-    (if (keyword? tag)
-      (hiccup-element tag
-                      v)
-      (throw (js/Error "What?")))))
+```clojure focus=9:12
+
 ```
 
-먼저 Hiccup 백터의 첫번째 자리에 함수를 넣을 수 있도록 백터를 처리하는 부분을 확장한다.
+#### 인자 형식
 
-```clojure
-(defn create-class
-  "렌더 함수를 받아서 React 클래스 컴포넌트를 반환한다."
-  [render-fn]
-  "TODO")
-
-(defn- fn-to-element
-  "클래스 컴포넌트로 변환"
-  [tag v]
-  (let [class-comp (create-class tag)
-        jsprops #js {:argv v}]
-    (react/createElement class-comp
-                         jsprops)))
-
-(defn- vec-to-elem [v]
-  (let [tag (first v)]
-    (if (keyword? tag)
-      (hiccup-element tag
-                      v)
-      (fn-to-element tag
-                     v))))
-```
-
-첫번째 자리에 키워드가 아니면 에러였지만, 이 부분을 수정하여 함수일 경우 클래스 컴포넌트로 변환하는 작업(Wrapper를 씌우는 작업)을 추가하자.
-
-먼저 사용자 정의 함수를 React 클래스 컴포넌트로 변경해주는 `create-class`가 있다고 가정하고, 이를 이용해 주어진 함수를 React 클래스 컴포넌트로 변환한다.
-
-```clojure 9:12
-(defn create-class
-  "렌더 함수를 받아서 React 클래스 컴포넌트를 반환한다."
-  [render-fn]
-  "TODO")
-
-(defn- fn-to-element
-  "클래스 컴포넌트로 변환"
-  [tag v]
-  (let [class-comp (create-class tag)
-        jsprops #js {:argv v}]
-    (react/createElement class-comp
-                         jsprops)))
-
-(defn- vec-to-elem [v]
-  (let [tag (first v)]
-    (if (keyword? tag)
-      (hiccup-element tag
-                      v)
-      (fn-to-element tag
-                     v))))
-```
-
-다음으로는 생성된 클래스 컴포넌트를 이용해 React Element를 생성하면 되는데, 이 때 props와 children을 어떻게 넘길지 결정해야 한다.
+다음으로는 동적으로 생성된 클래스 컴포넌트를 이용해 Fiber(React Element)를 생성하면 되는데, 이 때 props와 children을 어떻게 넘길지 결정해야 한다.
 
 `hiccup-element`에서 처럼 주어진 prop을 변환해서 넣는 방법도 있겠지만, 이 인자는 어짜피 CLJS 함수에서 사용할 것이므로 JS Object로 변환하는 것은 불필요하다. 또한 children도 사용자 정의 함수에게 마음대로 수정할 수 있는 자유도를 주기 위해 별다른 처리는 하지 않기로 한다.
 
 결론적으로 사용자 정의 함수에 인자들을 그대로 전달하기 위해, 여기서는 `argv`라는 이름으로 hiccup 백터 원본을 그대로 넘기자. 그러면 우리가 생성할 Wrapper 클래스 컴포넌트에서는 `this.props.argv`를 통해 원본 hiccup 벡터에 접근할 수 있다.
+
+---
 
 ```javascript
 function createClass(renderFn) {
@@ -472,13 +425,17 @@ function createClass(renderFn) {
 }
 ```
 
+#### `create-class` 구현
+
 마지막 단계로 주어진 렌더 함수를 React 클래스 컴포넌트로 변경해줄 `create-class` 구현만 남았다. 해야할 일은 React에서 High-Order-Component를 만드는 것과 동일하다. `React.Component`를 상속하는 클래스를 동적으로 생성하되, 몇가지 메소드를 재정의해서 반환하면 된다.
 
-1. `render`: `props.argv`로 넘겨 받은 hiccup 백터와 `renderFn`를 이용해 React Element를 생성해서 반환하면 된다.
-1. `shouldComponentUpdate`: 성능을 위해 튜닝해준다. React는 기본적으로 컴포넌트의 `props`나 `state`가 바뀌면 해당 컴포넌트를 새로 그린다. 그런데 우리가 넘기는 `props.argv`는 CLJS 백터로, 의미상 값이 바뀌지 않아도 JS 세상에서 볼 때는 바뀐 것으로 볼 수 있다. CLJS의 equality 체크 함수를 이용해 변경 여부 판단 로직을 튜닝해준다. [문서](https://reactjs.org/docs/react-component.html#shouldcomponentupdate)
-1. `displayName`: React 개발자 도구에서 컴포넌트를 구분할 수 있도록 이름을 지어준다.
+- `render`: `props.argv`로 넘겨 받은 hiccup 백터와 `renderFn`를 이용해 React Element를 생성해서 반환하면 된다.
+- `shouldComponentUpdate`: 성능을 위해 튜닝해준다. React는 기본적으로 컴포넌트의 `props`나 `state`가 바뀌면 해당 컴포넌트를 새로 그린다. 그런데 우리가 넘기는 `props.argv`는 CLJS 백터로, 의미상 값이 바뀌지 않아도 JS 세상에서 볼 때는 바뀐 것으로 볼 수 있다. CLJS의 equality 체크 함수를 이용해 변경 여부 판단 로직을 튜닝해준다. [문서](https://reactjs.org/docs/react-component.html#shouldcomponentupdate)
+- `displayName`: React 개발자 도구에서 컴포넌트를 구분할 수 있도록 이름을 지어준다.
 
-이를 ES6 스타일의 Javascript로 표현하면 왼쪽 코드와 같다.
+이를 ES6 스타일의 Javascript로 표현하면 오른쪽 코드와 같다.
+
+---
 
 ```clojure
 (defn create-class [render-fn]
@@ -503,10 +460,11 @@ function createClass(renderFn) {
     cmp))
 ```
 
-아쉽게 cljs.core API에 JS 클래스 상속을 위한 기능은 아직 없다.
-[create-react-class](https://reactjs.org/docs/react-without-es6.html)를 이용하는 방법도 있겠지만, 의존성을 줄이기 위해서 ES5 스타일로 직접 구현하도록 하자. ES5에서 클래스 상속을 구현하는 방법은 이 글의 범위를 넘어서므로 생략한다. ([Stackoverflow 답변](https://stackoverflow.com/questions/56942847/javascript-extend-an-es6-class-in-es5)이나 [블로그 글](https://blog.sessionstack.com/how-javascript-works-the-internals-of-classes-and-inheritance-transpiling-in-babel-and-113612cdc220)을 참고하자.)
+아쉽게 cljs.core API에 JS 클래스 상속을 위한 기능은 아직 없다. [create-react-class](https://reactjs.org/docs/react-without-es6.html)를 이용하는 방법도 있겠지만, 의존성을 줄이기 위해서 ES5 스타일로 직접 구현한다.[^5]
 
-```clojure
+---
+
+```clojure focus=12:17
 (defn create-class [render-fn]
   (let [cmp (fn [props context updater]
               (this-as this
@@ -535,9 +493,11 @@ function createClass(renderFn) {
 
 #### render 메소드 함수
 
-`this.props.argv`로 넘겨받은 원본 hiccup 백터에서 첫번째 요소는 `render-fn` 자기 자신이므로 버리고, 두번째 요소부터 함수 호출 인자로 생각해서 `render-fn` 함수를 불러준다. 반환되는 값은 Reagent 컴포넌트일테니, `as-element`를 호출해서 React 엘리먼트로 변환하여 반환하자.
+`this.props.argv`로 넘겨받은 원본 hiccup 백터에서 첫번째 요소는 `render-fn` 자기 자신이므로 버리고, 두번째 요소부터 함수 호출 인자로 생각해서 `render-fn` 함수를 불러준다. 반환되는 값은 Reagent 컴포넌트일테니, `as-element`를 호출해서 React 컴포넌트로 변환하여 반환하자.
 
-```clojure
+---
+
+```clojure focus=20:28
 (defn create-class [render-fn]
   (let [cmp (fn [props context updater]
               (this-as this
@@ -577,7 +537,9 @@ state는 사용하지 않으므로 무시하고, props가 바뀌었는지를 체
 
 TODO: 이전이나 이후 argv가 nil일 경우 무조건 업데이트한다. 왜 그런가? argv는 원본 hiccup 백터인데 nil인 경우가 있나?
 
-```clojure
+---
+
+```clojure focus=30:31
 (defn create-class [render-fn]
   (let [cmp (fn [props context updater]
               (this-as this
@@ -614,7 +576,9 @@ TODO: 이전이나 이후 argv가 nil일 경우 무조건 업데이트한다. �
 
 #### displayName 멤버 변수
 
-마지막으로 `render-fn`의 함수 이름을 그대로 사용하자. `render-fn`이 익명 함수일 경우 이름이 없을 수 있기 때문에 `when-let`으로 체크를 해준다. 함수 이름은 CLJS 컴파일러에 의해 변경되어 있는데, 여기서는 그대로 쓰자. (namespace 구분을 위한 '.'은 '$'로, '-'는 '_'로, '?'는 _QMARK 등으로 변경되어 있다.)
+마지막으로 `render-fn`의 함수 이름을 그대로 사용하자. `render-fn`이 익명 함수일 경우 이름이 없을 수 있기 때문에 `when-let`으로 체크를 해준다. 함수 이름은 CLJS 컴파일러에 의해 변경되어 있지만[^6] 여기서는 그대로 쓰자.
+
+---
 
 ```clojure
 (ns core
@@ -744,7 +708,9 @@ TODO: 이전이나 이후 argv가 nil일 경우 무조건 업데이트한다. �
 
 ```
 
-이제 사용자 컴포넌트도 문제 없이 잘 그려준다!
+이제 사용자 정의 컴포넌트도 문제 없이 잘 그려준다!
+
+---
 
 ```clojure
 (def ^:private counter_ (atom 0))
@@ -763,7 +729,7 @@ TODO: 이전이나 이후 argv가 nil일 경우 무조건 업데이트한다. �
 
 ### Step 4. Ratom을 이용한 상태 변경 지원
 
-사용자 컴포넌트도 지원할 수 있게 되었지만, 좀 더 쓸모있는 프로그램을 만들기 위해서는 컴포넌트가 상태(state)를 다룰 수 있어야 한다. 첫번째 대안으로는 React의 setState를 사용하는 방법이 있다. React의 기능을 그대로 활용하여 호환성을 유지한다는 면에서 훌륭한 접근법이다. 하지만 좀 더 클로저스러운 방법은 없을까? 클로저에서는 상태 관리(side-effect)를 위해 atom을 사용한다. 여기서도 atom을 동일하게 사용할 수 없을까?
+사용자 정의 컴포넌트도 지원할 수 있게 되었지만, 좀 더 쓸모있는 프로그램을 만들기 위해서는 컴포넌트가 상태(state)를 다룰 수 있어야 한다. 첫번째 대안으로는 React의 setState를 사용하는 방법이 있다. React의 기능을 그대로 활용하여 호환성을 유지한다는 면에서 훌륭한 접근법이다. 하지만 좀 더 클로저스러운 방법은 없을까? 클로저에서는 상태 관리(side-effect)를 위해 atom을 사용한다. 여기서도 atom을 동일하게 사용할 수 없을까?
 
 `click-counter`를 예를 들어보자. 현재까지 클릭한 횟수를 보여주는 버튼이다. 클릭 횟수는 실행 중에 값이 바뀌는 값으로, 여느 클로저 프로그램과 같이 `counter_` 라는 atom으로 관리한다. 뷰를 그리기 위해 현재 값을 읽을 때는 `counter_`를 `deref`(@)하고, 이벤트 핸들러에서 값을 바꿀 때는 `counter_`를 `reset!`한다. 구현에 사용되는 React는 모두 감춰지고, 일반적인 클로저 프로그램 그 자체가 될 수 있다!
 
@@ -775,7 +741,9 @@ Q. atom의 상태 값이 바뀔 때 신호를 받을 수 있나?
 > A. 클로저의 atom에는 이미 watch 기능이 있어서, 상태 값이 바뀔 때 마다 불릴 콜백 함수를 등록할 수 있다!
 
 Q. 컴포넌트는 어떻게 새로 그릴 수 있나?
-> A. 우리는 위에서 사용자 컴포넌트를 React 클래스 컴포넌트로 변환하였다. React 클래스 컴포넌트 API 중에는 해당 컴포넌트를 강제로 새로 그릴 수 있는 `forceUpdate` 메소드가 있다.
+> A. 우리는 위에서 사용자 정의 컴포넌트를 React 클래스 컴포넌트로 변환하였다. React 클래스 컴포넌트 API 중에는 해당 컴포넌트를 강제로 새로 그릴 수 있는 `forceUpdate` 메소드가 있다.
+
+---
 
 ```clojure
 (defn- add-watcher
@@ -788,18 +756,20 @@ Q. 컴포넌트는 어떻게 새로 그릴 수 있나?
                  (.forceUpdate this)))))
 ```
 
-이 둘을 조합하면 해결의 실마리가 보인다. 사용자 컴포넌트가 내부적으로 사용하는 atom들이 `deps-ratoms`으로 주어졌다고 하자. 그러면 이 atom들 각각에 watch 콜백 함수를 등록하는데, 이 콜백 함수에서 사용자 컴포넌트의 forceUpdate 메소드를 불러주는 것이다. (정확히는 사용자 컴포넌트를 감싸고 있는 Wrapper React 클래스 컴포넌트의 `forceUpdate` 메소드를 불러준다.)
+이 둘을 조합하면 해결의 실마리가 보인다. 사용자 정의 컴포넌트가 내부적으로 사용하는 atom들이 `deps-ratoms`으로 주어졌다고 하자. 그러면 이 atom들 각각에 watch 콜백 함수를 등록하는데, 이 콜백 함수에서 사용자 정의 컴포넌트의 forceUpdate 메소드를 불러주는 것이다. (정확히는 사용자 정의 컴포넌트를 감싸고 있는 Wrapper React 클래스 컴포넌트의 `forceUpdate` 메소드를 불러준다.)
 
 #### 그런데 `deps-ratoms` 어떻게 알아내나?
 
-마지막으로 가장 중요한 질문으로 사용자 컴포넌트가 내부적으로 사용하는 atom들은 어떻게 알아 낼 수 있을까? 첫번째 방법은 React의 useEffect hook 처럼 사용자 컴포넌트를 작성하는 개발자가 직접 기술하는 방법이 있을 것이다. 이는 사용성이나 안전성 측면에서 좋지 않다. 사람의 실수를 배재할 수 있는 안정적이고 확실한 방법이 필요하다.
+마지막으로 가장 중요한 질문으로 사용자 정의 컴포넌트가 내부적으로 사용하는 atom들은 어떻게 알아 낼 수 있을까? 첫번째 방법은 React의 useEffect hook 처럼 사용자 정의 컴포넌트를 작성하는 개발자가 직접 기술하는 방법이 있을 것이다. 이는 사용성이나 안전성 측면에서 좋지 않다. 사람의 실수를 배재할 수 있는 안정적이고 확실한 방법이 필요하다.
 
-결론부터 이야기하면 `deref` 함수를 후킹하면 `deps-ratoms`들을 알아낼 수 있다. 사용자 컴포넌트가 최종적으로 그려지는 과정을 다시 떠올려보자. 사용자 컴포넌트는 백터를 반환하는 함수이다. 랜더링 과정은 사용자 함수를 실행하여 Hiccup 백터를 반환받은 후, 이를 React Element로 변환하는 것이다. 어떤 atom이 이 반환되는 Hiccup 백터에 영향을 미치려면 이 함수를 실행하는 도중 어딘가에서는 참조(deref) 될 수 밖에 없다. atom을 deref하지 않고 상태 값을 읽어오는 방법은 CLJS에 없기 때문이다. 물론 참조된 값이 실제로는 전혀 사용되지 않을 수도 있다. 이 경우에도 해당 atom 값이 바뀔 때 사용자 컴포넌트를 새로 그린다고 하더라도, 여전히 영향을 주지 않을 것이기 때문에 문제는 없다.
+결론부터 이야기하면 `deref` 함수를 후킹하면 `deps-ratoms`들을 알아낼 수 있다. 사용자 정의 컴포넌트가 최종적으로 그려지는 과정을 다시 떠올려보자. 사용자 정의 컴포넌트는 백터를 반환하는 함수이다. 랜더링 과정은 사용자 함수를 실행하여 Hiccup 백터를 반환받은 후, 이를 React Element로 변환하는 것이다. 어떤 atom이 이 반환되는 Hiccup 백터에 영향을 미치려면 이 함수를 실행하는 도중 어딘가에서는 참조(deref) 될 수 밖에 없다. atom을 deref하지 않고 상태 값을 읽어오는 방법은 CLJS에 없기 때문이다. 물론 참조된 값이 실제로는 전혀 사용되지 않을 수도 있다. 이 경우에도 해당 atom 값이 바뀔 때 사용자 정의 컴포넌트를 새로 그린다고 하더라도, 여전히 영향을 주지 않을 것이기 때문에 문제는 없다.
 
 
 > 함수 실행 중에 참조(deref)되지 않은 atom은 정말 아무런 영향을 못주는걸까?
 >
 > CLJS의 불변성 덕분에 이게 보장된다. 먼저 함수 실행 후에 참조되는 atom 경우를 살펴보자. 이 값이 영향을 미치려면 반환된 Hiccup 백터를 바꿀 수 있어야 하는데, 한번 만들어진 백터의 값은 바뀌지 않기 때문에 영향을 미칠 수 없다. 그러면 역으로 함수 실행 전에 참조되는 atom은 어떨까? 이 값이 최종적으로 반환될 Hiccup 백터에 영향을 미치려면 사용자 정의 함수의 동작을 바꾸거나, 사용자 정의 함수가 참조하는 변수(binding)의 값을 바꿀 수 있어야 하는데, 이 또한 불가능하다. CLJS에선 함수 또한 불변이며, 모든 변수 또한 불변이기 때문이다. 물론 외부 JS 변수를 참조하거나, CLJS가 최종적으로 JS로 컴파일 되는 특성을 이용해 CLJS 값을 JS 오브젝트로 취급하여 값을 바꾸는 Hacky한 경우는 재외한다.
+
+---
 
 ```clojure
 (deftype RAtom [atom_]
@@ -822,9 +792,13 @@ Q. 컴포넌트는 어떻게 새로 그릴 수 있나?
     (remove-watch atom_ key)))
 ```
 
+#### RAtom
+
 `deref` 함수를 후킹하기 위해 atom과 동일한 인터페이스를 재공하는 `RAtom`이라는 데이터를 정의하자. 먼저 `reset!`과 `deref` 함수에 사용될 수 있도록 `IReset`과 `IDeref` 프로토콜을 구현해준다. 또한 watch 기능을 사용할 수 있도록 IWatchable 프로토콜도 구현해준다. 내부 구현은 atom 타입인 `atom_`을 가지도록 하고, atom의 기본 동작을 그대로 쓰도록 한다.
 
-```clojure
+---
+
+```clojure focus=1:8,15
 (def ^:dynamic *captured* (atom []))
 
 (defn- notify-deref-watcher!
@@ -857,36 +831,9 @@ Q. 컴포넌트는 어떻게 새로 그릴 수 있나?
 
 대신 deref 될 때 전역 변수인 `*captured*`에 자신을 등록하여 자진신고 하는 기능을 추가한다. 전역 변수는 좀 더 안전하게 쓸 수 있도록 dynamic binding 기능을 이용하여 사용하는 함수에서 재정의할 수 있도록 하자.
 
+---
+
 ```clojure
-(def ^:dynamic *captured* (atom []))
-
-(defn- notify-deref-watcher!
-  "Add `derefed` to `*captured*`."
-  [derefed]
-  (swap! *captured*
-         conj
-         derefed))
-
-(deftype RAtom [atom_]
-  IAtom
-
-  IDeref
-  (-deref [this]
-    (notify-deref-watcher! this)
-    (deref atom_))
-
-  IReset
-  (-reset! [_this new-value]
-    (reset! atom_ new-value))
-
-  IWatchable
-  (-notify-watches [_this old new]
-    (-notify-watches atom_ old new))
-  (-add-watch [_this key f]
-    (add-watch atom_ key f))
-  (-remove-watch [_this key]
-    (remove-watch atom_ key)))
-
 (defn- ratom
   "Like clojure.core/atom, except that it keeps track of derefs."
   [x]
@@ -895,8 +842,6 @@ Q. 컴포넌트는 어떻게 새로 그릴 수 있나?
 
 마지막으로 편리한 사용을 위해 `ratom`이라는 factory 함수를 정의한다.
 이제 사용자 정의 함수에서 `atom` 대신에 `ratom`을 쓰면, 아래 예제와 같이 랜더링 함수에서 사용자 정의 함수가 내부적으로 쓰는 `ratom`들을 계산해낼 수 있다.
-
-<div>
 
 ```clojure
 (def ^:private counter_ (ratom 0))
@@ -913,10 +858,9 @@ Q. 컴포넌트는 어떻게 새로 그릴 수 있나?
     (assert (= @captured_ [counter_]))))
 ```
 
-</div>
+---
 
-
-```clojure 11:20
+```clojure focus=12:20
 (defn create-class [render-fn]
   (let [cmp (fn [props context updater]
               (this-as this
@@ -956,9 +900,13 @@ Q. 컴포넌트는 어떻게 새로 그릴 수 있나?
     cmp))
 ```
 
+#### RAtom 적용
+
 이제 모든 조각은 갖춰졌으니, 이를 이용해서 `create-class`의 `render` 함수를 수정해보자.
 
-```clojure
+---
+
+```clojure focus=1:7,20:23
 (defn- do-render [this render-fn]
   (let [res (let [v (-> this .-props .-argv)]
               (apply render-fn
@@ -1004,7 +952,10 @@ Q. 컴포넌트는 어떻게 새로 그릴 수 있나?
 
 일단 원본 render 내용은 `do-render`로 뺀다.
 
-```clojure
+
+---
+
+```clojure focus=14:19
 (defn create-class [render-fn]
   (let [cmp (fn [props context updater]
               (this-as this
@@ -1046,8 +997,9 @@ Q. 컴포넌트는 어떻게 새로 그릴 수 있나?
 
 ratom의 capture 기능을 사용하여 render-fn이 내부적으로 사용하는 ratom들을 계산한다.
 
+---
 
-```clojure
+```clojure focus=14,20:21,24:27
 (defn create-class [render-fn]
   (let [cmp (fn [props context updater]
               (this-as this
@@ -1097,8 +1049,9 @@ ratom의 capture 기능을 사용하여 render-fn이 내부적으로 사용하�
 
 이제 이 ratom들이 변경될 때 마다 이 컴포넌트를 다시 그리도록 콜백을 등록한다. 그런데 이 컴포넌트를 새로 그려질 때에는, 이전에 사용되었던 ratom이 더 이상 사용되지 않을 수도 있다. 그래서 매번 새로그려질 때 마다 이전에 등록해 두었던 콜백은 모두 해지하도록 한다. 마지막으로 이 컴포넌트가 삭제될 때에도 콜백 함수들을 재거해야한다.
 
+---
 
-```clojure
+```clojure focus=8:17
 (defn- add-watcher [this ratoms]
   (when (seq ratoms)
     (doseq [deps-ratom_ ratoms]
@@ -1120,8 +1073,9 @@ ratom의 capture 기능을 사용하여 render-fn이 내부적으로 사용하�
 
 콜백 함수를 등록하는 함수와 제거하는 함수는 특별한 점은 없다. 다만 콜백 함수를 제거하기 위해서는 이전에 등록해 두었던 ratom 목록을 알아야만 한다. 이를 위해 `add-watcher`에서 리엑트 클래스 컴포넌트 인스턴스에 `_ratoms` 속성으로 몰래 설정해 두었다.
 
-```clojure
+---
 
+```clojure
 (ns core
   (:require ["react" :as react]
             ["react-dom" :as react-dom]
@@ -1332,6 +1286,7 @@ ratom의 capture 기능을 사용하여 render-fn이 내부적으로 사용하�
 
 이제 버튼을 눌러보면 숫자가 1씩 증가하는 것을 볼 수 있을 것이다!
 
+---
 
 ```clojure
 user=> (def t (for [i (range 10)] (do (prn "t=>" i) i)))
@@ -1370,7 +1325,9 @@ user=> f
 
 우리 구현에는 사실 함정이 하나 있다. 함수 안에 ratom 참조(deref) 코드가 존재하면 그 시점에 바로 계산이 실행되어 `deref` 함수가 불린다고 가정했다. 그런데 클로저스크립트는 lazy sequence라는 Lazy evaluation 기능을 지원하여, 코드 실행을 필요한 순간까지 지연시키는 기능이 있다. lazy sequence가 구현에 사용되면 코드상으로는 분명 함수 안에서 ratom을 참조하지만, 실제 실행은 지연되여 함수 실행이 종료될 때까지도 ratom 참조 코드가 실행되지 않을 수 있다. Side-effect가 없는 대부분의 경우 이와 같은 실행 순서 재조정은 문제가 없지만, 우리 구현은 Side-effect를 사용하고 있기 때문에 실행 순서가 재조정되면 정상적인 동작을 하지 못한다.
 
-```clojure 4:5,10:13
+---
+
+```clojure focus=4:5,10:13
 (defn- do-render [this]
   (let [render-fn (.-reagentRender this)
         res (let [v (-> this .-props .-argv)]
@@ -1388,7 +1345,9 @@ user=> f
                      )))
 ```
 
-실행 순서 재조정이 문제의 원인이니, 실행 순서를 강제하면 문제를 회피할 수 있을 것 처럼 보인다. 사용자 컴포넌트를 실행시킬 때 지연된 계산을 강제로 실행시키는 `doall` 함수를 추가하면된다. 이러면 반환되는 Hiccup 백터 안에 숨어있는 lazy sequence도 모두 계산되어, 우리가 원하는 대로 함수가 종료되는 시점에 ratom 참조가 모두 계산되어 문제를 회피할 수 있다.
+실행 순서 재조정이 문제의 원인이니, 실행 순서를 강제하면 문제를 회피할 수 있을 것 처럼 보인다. 사용자 정의 컴포넌트를 실행시킬 때 지연된 계산을 강제로 실행시키는 `doall` 함수를 추가하면된다. 이러면 반환되는 Hiccup 백터 안에 숨어있는 lazy sequence도 모두 계산되어, 우리가 원하는 대로 함수가 종료되는 시점에 ratom 참조가 모두 계산되어 문제를 회피할 수 있다.
+
+---
 
 ```clojure
 (defn- top-ranker [{:keys [ranker-list]}]
@@ -1407,6 +1366,8 @@ user=> f
 하지만 이 방법은 실행해선 안되는 lazy sequence도 모두 실행시키기 때문에 문제가 발생한다. 왼편 예제와 같이 컴포넌트 인자로 Infinity sequence (또는 generator)를 넘기는 경우가 있을 수 있는데, 원래 전혀 문제가 없어야 한다. 하지만 수정된 우리 구현에서는 `top-ranker-test`를 렌더링하기 위해 그 반환값인 `[top-ranker {:ranker-list (cycle ["A" "B" "C"])}]`를 실행시키게 되고, 그 안에 있는 `(cycle ["A" "B" "C"])`도 실행시키게 된다. `cycle`은 infinity sequence를 반환하기 때문에 계산이 끝나지가 않아 전체 프로그램이 멈추게 된다. 이 외에도 사용자가 실행을 지연시킬 목적으로 의도적으로 lazy sequence를 사용한 경우, 우리 코드가 사용자의 의도와 반하게 엉뚱한 위치에서 lazy sequence를 실행시켜버림으로써 각종 문제를 발생시킬 수 있다.
 
 Reagent에서는 이 문제를 해결하지 않고 사용자의 몫으로 남겨두고 있다. 대신 개발 모드에서는 실제 문제가 발생하는 경우를 감지하여 경고를 띄워준다. ([코드 참조](https://github.com/reagent-project/reagent/blob/396b375d2d6686cc104d3d99e291ba6a32ade54a/src/reagent/impl/template.cljs#L295)) 이런 이유로 Reagent로 웹 페이지를 개발할 때에는 항상 개발자 콘솔을 띄워놓고 테스트할 것을 추천한다.
+
+---
 
 ```clojure
 (defn- click-counter []
@@ -1427,6 +1388,8 @@ Reagent에서는 이 문제를 해결하지 않고 사용자의 몫으로 남겨
 모듈 전역 변수로 ratom을 두고 사용하면 사용자 정의 컴포넌트를 singleton으로 밖에 사용할 수 없는 문제가 있고, 컴포넌트 재사용성 측면에서도 별로 좋지않다.
 
 이런 문제를 완화하기 위해 reagent는 Form-2라는 형태의 컴포넌트를 지원한다. Form-2는 내부 상태를 가지는 함수여야 하는데, 클로저에서 이는 atom과 고차 함수로 구현된다. 다만 여기서는 atom 대신에 ratom을 쓴다는 점이 다를 뿐이다.
+
+---
 
 ```clojure
 (defn- do-render [this render-fn]
@@ -1457,6 +1420,7 @@ Reagent에서는 이 문제를 해결하지 않고 사용자의 몫으로 남겨
 
 구현을 수정하여 함수를 반환하는 함수를 지원해보자. 이제 `do-render`에서 반환값 `res`가 함수일 수 있다. 그런데 바로 이 함수가 실질적으로 Hiccup 백터를 반환할 함수 (`render-fn`)인 것이다. 그럼 이 함수를 이용해 do-render를 다시 재귀호출 하면 랜더링이 될 것이다. 그리고 이 컴포넌트가 새로 그려질 때에도 `do-render`함수는 원본 `render-fn`이 아닌 이 반환된 함수로 불려야 한다. 내부 상태 ratom은 이 반환된 함수 클로저(closure) 안에 숨어있기 때문이다. 원본 `render-fn`로 부르면 매번 새로운 클로저(closure)를 생성하기 때문에 실질적으로 상태 업데이트가 안 될 것이다.
 
+---
 
 ```clojure
 (defn- do-render [this]
@@ -1487,7 +1451,7 @@ Reagent에서는 이 문제를 해결하지 않고 사용자의 몫으로 남겨
 
            :reagentRender
            render-fn
-           "..." "..."           
+           "..." "..."
            })
 ```
 
@@ -1495,9 +1459,11 @@ Reagent에서는 이 문제를 해결하지 않고 사용자의 몫으로 남겨
 
 지금까지 구현의 원리를 다시 정리해보자.
 
-1. Reagent 사용자 컴포넌트는 React 클래스 컴포넌트로 변환된다. 하지만 실질적인 변환, 즉 Reagent 사용자 컴포넌트 Body에 대한 변환은 이 단계에서는 이루어 지지 않는다.
-1. 실질적 변환은 React 클래스 컴포넌트의 `render` 메소드 안에서 진행된다. 1번 과정을 컴파일이라고 부를 수 있는데, 이 시점으로 보면 실질적 변환은 `런타임` 때 진행된다고 볼 수 있다. `prop`으로 전달받은 인자를 이용해 실질적 렌더 함수(Reagent 사용자 컴포넌트)를 호출하여 Hiccup 백터를 계산하고, 이를 Reagent Element로 변환한다.
+1. Reagent 사용자 정의 컴포넌트는 React 클래스 컴포넌트로 변환된다. 하지만 실질적인 변환, 즉 Reagent 사용자 정의 컴포넌트 Body에 대한 변환은 이 단계에서는 이루어 지지 않는다.
+1. 실질적 변환은 React 클래스 컴포넌트의 `render` 메소드 안에서 진행된다. 1번 과정을 컴파일이라고 부를 수 있는데, 이 시점으로 보면 실질적 변환은 `런타임` 때 진행된다고 볼 수 있다. `prop`으로 전달받은 인자를 이용해 실질적 렌더 함수(Reagent 사용자 정의 컴포넌트)를 호출하여 Hiccup 백터를 계산하고, 이를 Reagent Element로 변환한다.
 1. form-2 형일 경우 최초 렌더링이 될 때 실제 랜더 함수가 생성된다. 최초 렌더링에 사용할 렌더 함수와 이후 사용할 렌더 함수가 달라야 한다. 이를 위해 클래스 컴포넌트 **인스턴스**의 `reagentRender` 맴버 변수에 실제 렌더 함수를 저장하고, 렌더 과정에 이를 바꿔칠 수 있도록 한다.
+
+---
 
 ```clojure
 (defn- nested-click-counter []
@@ -1528,9 +1494,11 @@ Reagent에서는 이 문제를 해결하지 않고 사용자의 몫으로 남겨
        [nested-click-counter]])))
 ```
 
-눈치 빠른 독자는 이미 위화감을 느꼈을 수 있는데, 현 과정에는 한가지 문제가 있다. 사용자 컴포넌트를 랜더링할 때 마다 매번 동적으로 새로운 React 클래스 컴포넌트를 만들어내기 때문에, 내부 상태(인스턴스 또는 fiber)가 유지되지 않는 점이다. React 입장에서 보면 매번 새로운 클래스 컴포넌트로 바뀌는 것이기 때문에 기존 fiber를 지우고 새로운 fiber를 생성하게 되고, 그 과정에서 해당 컴포넌트의 내부 상태가 모두 초기화된다. 우리 구현에서는 내부 상태를 클로저(Closure) 형태로 멤버 변수에 저장하기 때문에(`reagentRender`) 같이 초기화 되버린다.
+눈치 빠른 독자는 이미 위화감을 느꼈을 수 있는데, 현 과정에는 한가지 문제가 있다. 사용자 정의 컴포넌트를 랜더링할 때 마다 매번 동적으로 새로운 React 클래스 컴포넌트를 만들어내기 때문에, 내부 상태(인스턴스 또는 fiber)가 유지되지 않는 점이다. React 입장에서 보면 매번 새로운 클래스 컴포넌트로 바뀌는 것이기 때문에 기존 fiber를 지우고 새로운 fiber를 생성하게 되고, 그 과정에서 해당 컴포넌트의 내부 상태가 모두 초기화된다. 우리 구현에서는 내부 상태를 클로저(Closure) 형태로 멤버 변수에 저장하기 때문에(`reagentRender`) 같이 초기화 되버린다.
 
 예를 통해 이 문제를 살펴보자. `click-counter`가 내부적으로 `nested-click-counter`를 사용하고 있다. 최초 랜더링이 끝나면 각각에 대응되는 React 클래스 컴포넌트가 생성되는데, `click-counter`에 대응되는 React 클래스 컴포넌트를 `OuterComp`, `nested-click-counter`에 대응되는 컴포넌트를 `InnerComp`라고 하자. (정확히는 클래스 컴포넌트와 그 인스턴스이다.) `nested-click-counter`의 버튼을 누르면 `InnerComp`의 `forceUpdate`가 불리면서 해당 컴포넌트만 다시 그려진다. 이 때에는 `nested-click-counter`의 안쪽 함수가 불릴 뿐이라서 클래스 동적 생성은 발생하지 않고 기능도 의도대로 작동한다. 반면에 바깥 쪽 `click-counter`의 버튼을 누르면, `OuterComp`를 다시 그리는데, 이 과정에서 `nested-click-counter`를 다시 컴파일하여 새로운 React 클래스 컴포넌트 `OuterComp'`를 생성해낸다. 이전에 있던 `OuterComp`(의 인스턴스)는 재거되고, `OuterComp'`(의 인스턴스)가 새로 생성된다. 따라서 내부 상태가 유지되지 않아 카운트도 0으로 초기화된다.
+
+---
 
 ```clojure
 (defn- fn-to-element
@@ -1542,7 +1510,9 @@ Reagent에서는 이 문제를 해결하지 않고 사용자의 몫으로 남겨
                          jsprops)))
 ```
 
-해결방법은 사용자 컴포넌트를 변환할 때 매번 새로운 React 클래스 컴포넌트를 만들지 말고 재사용하는 것이다. 사용자 컴포넌트틀 React 클래스 컴포넌트로 변환하는 로직에 memoize 기법을 적용하여, 같은 함수에 대해서는 동일한 결과가 반환되도록 하자.
+해결방법은 사용자 정의 컴포넌트를 변환할 때 매번 새로운 React 클래스 컴포넌트를 만들지 말고 재사용하는 것이다. 사용자 정의 컴포넌트틀 React 클래스 컴포넌트로 변환하는 로직에 memoize 기법을 적용하여, 같은 함수에 대해서는 동일한 결과가 반환되도록 하자.
+
+---
 
 ```clojure
 (def ^:private react-class-cache-key "cached")
@@ -1577,6 +1547,8 @@ Reagent에서는 이 문제를 해결하지 않고 사용자의 몫으로 남겨
 ```
 
 atom을 이용한 memoize 구현을 사용해도 되지만, 여기서는 실제 Reagent의 구현을 가져왔다. 클로저 스크립트의 함수는 JS의 함수이고, 이는 결국은 JS Object이기 때문에 임의의 맴버 변수를 추가할 수 있다. `cached`라는 맴버 변수에 변환된 React 클래스 컴포넌트를 저장해두고 읽어오게 한다. 이 방법을 쓰면 메모리 leak 문제를 피할 수 있다.
+
+---
 
 ```clojure
 (ns core
@@ -1830,7 +1802,9 @@ atom을 이용한 memoize 구현을 사용해도 되지만, 여기서는 실제 
 
 이제 상태가 유지되지 않는 문제도 해결되어, 우리의 조그만 Reagent가 완성되었다.
 
-</CodeWave>
+</CH.Scrollycoding>
+
+</div>
 
 
 ## 닫으며
@@ -1838,7 +1812,7 @@ atom을 이용한 memoize 구현을 사용해도 되지만, 여기서는 실제 
 학습용으로 작성한 우리 코드는 실제 Reagent 구현과 여러가지 차이가 있다.
 
 - Reagent는 성능 최적화 코드가 많이 적용되어 있으며, 임의의 CLJS / JS 코드와도 잘 호환이 되도록 배려가 되어 있다. (reagentRender 호출 시 `this` 변수가 유지되도록 하던가, 클래스 컴포넌트를 생성할 때 각종 속성을 설정한다.) 이 글에서는 가독성을 우선하여 이런 코드는 배재하였다.
-- Reagent는 ratom을 확장하여 Reactive programming을 지원하는 기본 요소(building block)로 고도화 시켰다. 함수로 부터 그 함수의 반환값을 상태값으로 가지는 읽기 전용 ratom, Reaction을 만들 수 있다. 이름에서 알 수 있듯이 주어진 함수가 다른 ratom 들에 의존성을 가질 경우, 해당 ratom 들의 값이 바뀌면 이 Reaction의 상태값도 Reactive하게 재계산되어 최신 값으로 바뀐다. 이 글의 `create-class`에서 사용자 컴포넌트가 내부적으로 사용하는 ratom을 찾아내서 watcher를 등록하거나 해지하는 코드는 Reagent에서는 reaction으로 구현되어 있다.
+- Reagent는 ratom을 확장하여 Reactive programming을 지원하는 기본 요소(building block)로 고도화 시켰다. 함수로 부터 그 함수의 반환값을 상태값으로 가지는 읽기 전용 ratom, Reaction을 만들 수 있다. 이름에서 알 수 있듯이 주어진 함수가 다른 ratom 들에 의존성을 가질 경우, 해당 ratom 들의 값이 바뀌면 이 Reaction의 상태값도 Reactive하게 재계산되어 최신 값으로 바뀐다. 이 글의 `create-class`에서 사용자 정의 컴포넌트가 내부적으로 사용하는 ratom을 찾아내서 watcher를 등록하거나 해지하는 코드는 Reagent에서는 reaction으로 구현되어 있다.
 - 우리 구현에서는 ratom이 바뀔 때마다 곧바로 forceUpdate 호출이 발생하지만, Reagent에서는 batching 기능이 구현되어 있다.
 - `input`과`textarea`가 대응되는 `<input>`이나 `<textarea>`로 변환되는게 아니라 [ReagentInput](https://github.com/reagent-project/reagent/blob/396b375d2d6686cc104d3d99e291ba6a32ade54a/src/reagent/impl/template.cljs#L209)라는 특수 컴포넌트로 변환된다. TODO: batching 때문일 것 같긴한데, 왜 그랬을까?
 
@@ -1855,3 +1829,13 @@ atom을 이용한 memoize 구현을 사용해도 되지만, 여기서는 실제 
 - Ratom과 Reaction
 - ReagentInput
 - Functional 컴포넌트 방식으로 Reagent 구현
+
+---
+
+[^1]: Fiber는 React 내부 코드에서 사용하는 용어로, Virtual DOM이라는 용어로 널리 알려져 있다.
+[^2]: 실제로 Hiccup은 문자열이나 심볼도 지원하지만 간단한 구현을 위해 무시하자.
+[^3]: 이 부분은 안해주더라도 동작은 한다. CLJS의 sequence는 그 자체로 자바스크립트 iterable 객체이기도 한데, React가 내부적으로 iterable 자식을 지원하도록 구현되어 있기 때문인 것 같다.
+임의의 JS object가 iterable 인지를 확인하는 방법은 [블로그](https://pks2974.medium.com/javascript%EC%99%80-iterator-cdee90b11c0f)를 참고하자.
+[^4]: [1.0.0](https://github.com/reagent-project/reagent/blob/master/CHANGELOG.md#100-2020-12-21) 부터 에서 기본값을 함수형 컴포넌트로 바꿀 수 있도록 설정할 수 있다.
+[^5]: ES5에서 클래스 상속을 구현하는 방법은 [Stackoverflow 답변](https://stackoverflow.com/questions/56942847/javascript-extend-an-es6-class-in-es5)이나 [블로그 글](https://blog.sessionstack.com/how-javascript-works-the-internals-of-classes-and-inheritance-transpiling-in-babel-and-113612cdc220)을 참고하자.
+[^6]: namespace 구분을 위한 '.'은 '$'로, '-'는 '_'로, '?'는 _QMARK 등으로 변경되어 있다.
