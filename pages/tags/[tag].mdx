@@ -6,7 +6,11 @@ title: Tagged Posts
 import { useRouter } from 'next/router'
 
 export const TagName = () => {
-  const { tag } = (useRouter() || {}).query
+  const router = useRouter();
+  if (router == null) {
+    return null;
+  }
+  const { tag } = router.query
   return tag || null
 }
 
