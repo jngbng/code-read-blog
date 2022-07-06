@@ -30,4 +30,8 @@ export default {
       url: "https://medium.com/@jngbng",
     }
   ],
+  cusdis: {
+    appId: "2144a242-016e-4e83-b410-68ecd9cbd165",
+    lang: "ko",
+  }
 }
