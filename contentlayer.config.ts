@@ -25,6 +25,8 @@ import rehypePresetMinify from 'rehype-preset-minify'
 import siteMetadata from './data/siteMetadata'
 import { allCoreContent, sortPosts } from 'pliny/utils/contentlayer.js'
 import prettier from 'prettier'
+import { remarkCodeHike, recmaCodeHike } from "codehike/mdx"
+
 
 const root = process.cwd()
 const isProduction = process.env.NODE_ENV === 'production'
@@ -147,12 +149,23 @@ export const Authors = defineDocumentType(() => ({
   computedFields,
 }))
 
+/** @type {import('codehike/mdx').CodeHikeConfig} */
+const chConfig = {
+  // optional (see code docs):
+  components: { code: "Code" },
+  // if you can't use RSC:
+  // syntaxHighlighting: {
+  //  theme: "github-dark",
+  // },
+}
+
 export default makeSource({
   contentDirPath: 'data',
   documentTypes: [Blog, Authors],
   mdx: {
     cwd: process.cwd(),
     remarkPlugins: [
+      [remarkCodeHike, chConfig],
       remarkExtractFrontmatter,
       remarkGfm,
       remarkCodeTitles,
@@ -160,6 +173,10 @@ export default makeSource({
       remarkImgToJsx,
       remarkAlert,
     ],
+    mdxOptions: (opts) => {
+      opts.recmaPlugins = [[recmaCodeHike, chConfig]]
+      return opts
+    },
     rehypePlugins: [
       rehypeSlug,
       [

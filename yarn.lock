@@ -1505,6 +1505,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@code-hike/lighter@npm:1.0.1":
+  version: 1.0.1
+  resolution: "@code-hike/lighter@npm:1.0.1"
+  dependencies:
+    ansi-sequence-parser: 1.1.1
+  checksum: 82e98c484e1c205f0f8d1e65141c2d3a4531695e0f325f0b8be6ec8de320b81a08c33f1ecae23ed79c61f173449c127980ea8ef03e7cd43a3ec8ac7f44f5ac9a
+  languageName: node
+  linkType: hard
+
 "@contentlayer2/cli@npm:0.5.8":
   version: 0.5.8
   resolution: "@contentlayer2/cli@npm:0.5.8"
@@ -4324,6 +4333,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"ansi-sequence-parser@npm:1.1.1":
+  version: 1.1.1
+  resolution: "ansi-sequence-parser@npm:1.1.1"
+  checksum: ead5b15c596e8e85ca02951a844366c6776769dcc9fd1bd3a0db11bb21364554822c6a439877fb599e7e1ffa0b5f039f1e5501423950457f3dcb2f480c30b188
+  languageName: node
+  linkType: hard
+
 "ansi-styles@npm:^4.0.0, ansi-styles@npm:^4.1.0":
   version: 4.3.0
   resolution: "ansi-styles@npm:4.3.0"
@@ -4957,6 +4973,19 @@ __metadata:
   languageName: node
   linkType: hard
 
+"codehike@npm:^1.1.0":
+  version: 1.1.0
+  resolution: "codehike@npm:1.1.0"
+  dependencies:
+    "@code-hike/lighter": 1.0.1
+    diff: ^5.1.0
+    estree-util-visit: ^2.0.0
+    mdast-util-mdx-jsx: ^3.0.0
+    unist-util-visit: ^5.0.0
+  checksum: 259305fb51dc90490cf81f5332ce43aac5e167485f5c116f01c1925fb36f8ea76dfa916fe6444078c3fb8310483c875b47eab0943054d11f850fc8d5d1478d6c
+  languageName: node
+  linkType: hard
+
 "collapse-white-space@npm:^2.0.0":
   version: 2.1.0
   resolution: "collapse-white-space@npm:2.1.0"
@@ -5384,6 +5413,13 @@ __metadata:
   dependencies:
     dequal: ^2.0.0
   checksum: d2ff650bac0bb6ef08c48f3ba98640bb5fec5cce81e9957eb620408d1bab1204d382a45b785c6b3314dc867bb0684936b84c6867820da6db97cbb5d3c15dd185
+  languageName: node
+  linkType: hard
+
+"diff@npm:^5.1.0":
+  version: 5.2.2
+  resolution: "diff@npm:5.2.2"
+  checksum: a1af5d6322ca6312279369665b5a9e6d54cd2aed42729a30523e174ccd14661a752bf10d75deec8763964cab3df3787fe816f88e9de7ee8fe774852007269d88
   languageName: node
   linkType: hard
 
@@ -11591,6 +11627,7 @@ __metadata:
     "@typescript-eslint/eslint-plugin": ^8.54.0
     "@typescript-eslint/parser": ^8.54.0
     body-scroll-lock: ^3.1.5
+    codehike: ^1.1.0
     contentlayer2: 0.5.8
     cross-env: ^10.1.0
     esbuild: 0.27.3
