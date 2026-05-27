@@ -103,5 +103,14 @@ module.exports = () => {
 
       return config
     },
+    async redirects() {
+      return [
+        {
+          source: '/posts/:path*',
+          destination: '/blog/:path*',
+          permanent: false,
+        },
+      ]
+    },
   })
 }

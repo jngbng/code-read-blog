@@ -8,7 +8,7 @@ import { Block, CodeBlock, parseProps } from "codehike/blocks"
 import { RawCode, Pre, highlight } from "codehike/code"
 
 import { tokenTransitions } from "./annotations/token-transitions"
-import { wordWrap } from "./annotations/word-wrap"
+import { focus } from "./annotations/focus"
 
 const Schema = Block.extend({
   steps: z.array(Block.extend({ code: CodeBlock })),
@@ -32,7 +32,7 @@ export function Scrollycoding(props: unknown) {
         ))}
       </div>
       <div className="w-2/5 max-w-xl bg-[#212121]">
-        <div className="top-16 sticky overflow-auto">
+        <div className="top-16 sticky max-h-[80vh] overflow-auto h-full">
           <Selection
             from={steps.map((step) => (
               <Code key="code" codeblock={step.code} />
@@ -49,8 +49,8 @@ async function Code({ codeblock }: { codeblock: RawCode }) {
   return (
     <Pre
       code={highlighted}
-      handlers={[tokenTransitions, wordWrap]}
-      className="min-h-[40rem] p-3"
+      handlers={[tokenTransitions, focus]}
+      className="min-h-[40rem] p-3 h-full m-0"
     />
   )
 }
