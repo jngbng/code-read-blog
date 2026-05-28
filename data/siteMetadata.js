@@ -1,9 +1,9 @@
 /** @type {import("pliny/config").PlinyConfig } */
 const siteMetadata = {
   title: 'Jbseo Blog',
-  author: 'Jeongbong Seo',
+  author: 'Jbseo',
   headerTitle: 'Jbseo Blog',
-  description: 'Jeongbong Seo\'s simple blog',
+  description: '공부한 것을 기록하는 블로그 입니다.',
   language: 'en-us',
   theme: 'system', // system, dark or light
   siteUrl: 'https://jbseo.me',
@@ -12,9 +12,9 @@ const siteMetadata = {
   socialBanner: `${process.env.BASE_PATH || ''}/static/images/twitter-card.png`,
   mastodon: '',
   email: 'admin@jbseo.me',
-  github: 'https://github.com/jngbng',
+  github: 'https://github.com/jngbng/code-read-blog',
   x: '',
-  facebook: 'https://facebook.com',
+  facebook: '',
   youtube: '',
   linkedin: 'https://www.linkedin.com/in/jngbng',
   threads: '',
@@ -51,7 +51,7 @@ const siteMetadata = {
   newsletter: {
     // supports mailchimp, buttondown, convertkit, klaviyo, revue, emailoctopus, beehive
     // Please add your .env file and modify it according to your selection
-    provider: 'buttondown',
+    provider: '',
   },
   comments: {
     // If you want to use an analytics provider you have to add it to the
