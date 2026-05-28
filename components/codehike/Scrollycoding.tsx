@@ -28,7 +28,7 @@ export function Scrollycoding(props: unknown) {
         ))}
       </div>
       <div className="w-2/5 max-w-xl bg-[#212121]">
-        <div className="sticky top-16 h-full max-h-[80vh] overflow-auto">
+        <div className="sticky top-16 max-h-[80vh] overflow-auto">
           <Selection
             from={steps.map((step) => (
               <Code key="code" codeblock={step.code} />
@@ -46,7 +46,7 @@ async function Code({ codeblock }: { codeblock: RawCode }) {
     <Pre
       code={highlighted}
       handlers={[tokenTransitions, focus]}
-      className="m-0 h-full min-h-[40rem] p-3"
+      className="min-h-[40rem] mt-0 mb-0 min-w-fit"
     />
   )
 }
