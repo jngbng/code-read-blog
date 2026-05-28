@@ -5,8 +5,8 @@ import type { MDXComponents } from 'mdx/types'
 import Image from './Image'
 import CustomLink from './Link'
 import TableWrapper from './TableWrapper'
-import { Code } from "./codehike/Code"
-import { Scrollycoding } from "./codehike/Scrollycoding"
+import { Code } from './codehike/Code'
+import { Scrollycoding } from './codehike/Scrollycoding'
 
 export const components: MDXComponents = {
   Image,
